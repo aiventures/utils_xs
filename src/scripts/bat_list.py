@@ -7,7 +7,7 @@ Features:
 - Reads .bat files from given directories or paths.
 - Extracts first REM comment for descriptions.
 - Uses ANSI colors for formatted output.
-- Case-insensitive search with ':' (AND) and ';' (OR) support.
+- Case-insensitive search with ';' (AND) and ':' (OR) support.
 - Highlights search matches.
 - Displays "### PATH" header only once per directory.
 - Dynamically aligns filenames to the longest in the list for neat output.
@@ -83,15 +83,20 @@ import re
 import sys
 from typing import List, Dict, Union, Optional
 
+ALL = ";"
+ANY = ":"
+
 # Add parent directory of the current file to sys.path so as to avoid import errors
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-# if this shows unable to import. run  bat2py to convert the bat files into python constant files
-from config.myenv import MY_P_UTILS_BAT, MY_P_MYENV
-from config.colors import C_0, C_T, C_F, C_H, C_Q, C_PROG, C_E, C_I, C_S, C_SH, C_PY
+# shows unable to import. run  bat2py to convert the bat files into python constant files
+# nevertheless it will show up as error
+# best to install the utils into a venv anyway
+from config.myenv import MY_P_UTILS_BAT, MY_F_MYENV_CMD
+from config.colors import C_0, C_T, C_F, C_H, C_Q, C_PROG, C_E, C_I, C_SH
 
 # === Default Configuration ===
 P_BAT_DEFAULT: str = MY_P_UTILS_BAT
-F_CMD_DEFAULT: str = os.path.join(MY_P_MYENV, "cmd_bat_list.env")
+F_CMD_DEFAULT: str = MY_F_MYENV_CMD
 
 
 def initialize_output_file(output_file: str) -> None:
@@ -208,11 +213,11 @@ def filter_dict(files_dict: Dict[int, Dict[str, str]], query: Optional[str]) -> 
     def contains_any(text: str, terms: List[str]) -> bool:
         return any(t.lower() in text.lower() for t in terms)
 
-    if ":" in query:
-        terms = [t.strip() for t in query.split(":") if t.strip()]
+    if ALL in query:
+        terms = [t.strip() for t in query.split(ALL) if t.strip()]
         return {k: v for k, v in files_dict.items() if contains_all(v["text"], terms)}
-    elif ";" in query:
-        terms = [t.strip() for t in query.split(";") if t.strip()]
+    elif ANY in query:
+        terms = [t.strip() for t in query.split(ANY) if t.strip()]
         return {k: v for k, v in files_dict.items() if contains_any(v["text"], terms)}
     else:
         term = query.strip()
@@ -238,7 +243,7 @@ def print_bat_dict(files_dict: Dict[int, Dict[str, str]], query: Optional[str] =
 
     highlight_terms: List[str] = []
     if query:
-        sep = ":" if ":" in query else (";" if ";" in query else None)
+        sep = ALL if ALL in query else (ANY if ANY in query else None)
         highlight_terms = [t.strip() for t in query.split(sep)] if sep else [query.strip()]
 
     # Determine longest filename for alignment

@@ -146,8 +146,8 @@ from datetime import datetime, timedelta
 
 # get read/write path from env
 # create this module using bat2py.bat
+# best to install the utils into a venv anyway
 from config.myenv import MY_P_DESKTOP
-
 
 def generate_floating_sidebar(anchors):
     """Returns HTML+CSS for a right-aligned floating TOC sidebar"""

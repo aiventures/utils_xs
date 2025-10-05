@@ -1,6 +1,6 @@
 
 @echo off
-rem py_convert_env.bat converts env from bat to python using convert_bat_env_to_python.py
+rem py_convert_colors.bat converts colors from bat to python (convert_bat_colors_to_python.py)
 
 call colors.bat
 call myenv.bat
@@ -14,6 +14,8 @@ echo %C_PY%[%MY_F_COLORS_BAT%] ^> [%MY_F_COLORS_PY%] %C_PY%
 set NUM_ARGS=0
 for %%x in (%*) do Set /A NUM_ARGS+=1
 python "%py_program%" --input "%MY_F_COLORS_BAT%" --output "%MY_F_COLORS_PY%"
+:: Now run the command saved from python program
+
 echo %C_O%
 cat %MY_F_COLORS_PY%
 goto end

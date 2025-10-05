@@ -1,6 +1,6 @@
 """
-This file was generated from colors.bat
-Date of generation: 2025-10-04 21:37:52
+This file was generated from C:\\30_Entwicklung\\WORK\\utils_xs\\bat\\colors.bat
+Date of generation: 2025-10-05 22:18:38
 """
 
 # Auto-generated from batch color definitions
@@ -104,14 +104,14 @@ C_S = f"{COL_BLUE_PALE_153}"
 C_SH = f"{COL_RED_STRAWBERRY_204}"
 C_F = f"{COL_BLUE_SKY}"
 C_H = f"{COL_WHITE_CREAM_230}"
-C_I = f"{COL_GREEN_AQUA_85}"
-C_PY = f"{COL_GREEN}"
-C_Q = f"{C_MAG}"
+C_I = f"{COL_CYAN_AQUA_14}"
+C_PY = f"{COL_GREEN_AQUA_85}"
+C_Q = f"{COL_PINK_LILAC_177}"
 C_PROG = f"{COL_PINK}"
 C_E = f"{COL_RED}"
 
 
 if __name__ == "__main__":
     vars_dict = {k: f"{v}{k}{C_0}" for k, v in globals().items() if k.isupper()}
-    for _, v in vars_dict.items():
+    for _,v in vars_dict.items():
         print(v + COL_DEFAULT)

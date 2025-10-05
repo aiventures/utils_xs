@@ -35,8 +35,11 @@ It should transform the bat file into python according to the follwing rules, as
   set "MY_P_VENV=%MY_P_WORK%\VENV"
   rem path containing work venv
   set "MY_P_VENV_WORK=%MY_P_VENV%\WORK"
-  Take care to collect all variable definitions before and resolve / replace them iteratively (so replace Vaiable name by its valiues from to bottom of file, for example MY_P_WORK is defined in previous lines and will be referenced below. So %MY_P_WORK% should be resolved to C:\30_Entwicklung )
-- add a main method and argparse arguments to supply input file and output file with a default of myenv_set.bat and myenv_set.py for the case that these params won't be supplied at command line
+  Take care to collect all variable definitions before and resolve / replace them iteratively (so replace Vaiable name by its
+  valiues from to bottom of file, for example MY_P_WORK is defined in previous lines and will be referenced below.
+  So %MY_P_WORK% should be resolved to C:\30_Entwicklung )
+- add a main method and argparse arguments to supply input file and output file with a default of
+  myenv_set.bat and myenv_set.py for the case that these params won't be supplied at command line
 - also add error messages in case avriables can't be resolved or there are circular references
 - for the generate path in the comment fix "got unexpected unicode" for paths like C:\<...>\\utils\... (because there is a path with \\u)
 

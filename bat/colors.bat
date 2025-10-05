@@ -145,11 +145,11 @@ set C_F=%COL_BLUE_SKY%
 rem highlighted output 
 set C_H=%COL_WHITE_CREAM_230%
 rem index number
-set C_I=%COL_GREEN_AQUA_85%
+set C_I=%COL_CYAN_AQUA_14%
 rem python output
-set C_PY=%COL_GREEN%
+set C_PY=%COL_GREEN_AQUA_85%
 rem question / prompt
-set C_Q=%C_MAG%
+set C_Q=%COL_PINK_LILAC_177%
 rem program 
 set C_PROG=%COL_PINK%
 rem ERROR

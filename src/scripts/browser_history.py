@@ -45,17 +45,24 @@ DateTime,NavigatedToUrl,PageTitle
 Rewrite existing code with these requiremnts:
 * Read the CSV and convert it to UTF-8, as it might have a different encoding format such as UTF-8-BOM
 * Extract the CSV contents into a dict containing an consecutive index number as key, and as dictionary atrtributes;:
-- "DateTime" the datetime string (in the format YYYY-MM-DDThh:mm:ss.tttZ as shown in the example, in ISO Format) transformed into datetime.datetime object,
+- "DateTime" the datetime string (in the format YYYY-MM-DDThh:mm:ss.tttZ as shown in the example, in ISO Format)
+  transformed into datetime.datetime object,
 - "url" containing NavigatedToUrl
 - "base_url" containing the base url (without leading http://www.) derived from NavigatedToUrl
 - "title" containing PageTitle
 
 As for the original version, generate:
 - the Table Of Content section as generated with function generate_toc_table_vertical_heatmap (showing the number of visited links)
-  But make the table of content s just one line showing the number of links visited in a month with the last column being the current month, and just the last 12 preceding months i the previous columns.
+  But make the table of content s just one line showing the number of links visited in a month with the
+  last column being the current month, and just the last 12 preceding months i the previous columns.
 - Keep the domain statistics section just as generated using function format_domain_table_recent
-- Add a section and subsections of previously visited links, as for the existing code into subsections by year (# yyyy) , year-month (## yyyy-mm), year-month-day (### yyyy-mm-dd). If there are duplicate links on the level ### yyyy-mm-dd, just add one link in the display list, but add the count of how many duplicates were found in brackets behind the link in that line
-- Finally, add a a sections of # Duplicates per MOnth on Header level 1. Header Level two is ## YYYY-MM Dupllicates. As lines , add as list (markdown format * ) all duplicate links that are found for this month, sorted by it's link url
+- Add a section and subsections of previously visited links, as for the existing code into subsections
+  by year (# yyyy) , year-month (## yyyy-mm), year-month-day (### yyyy-mm-dd). If there are duplicate
+  links on the level ### yyyy-mm-dd, just add one link in the display list, but add the count of how many
+    duplicates were found in brackets behind the link in that line
+- Finally, add a a sections of # Duplicates per MOnth on Header level 1. Header Level two is ## YYYY-MM
+  Dupllicates. As lines , add as list (markdown format * ) all duplicate links that are
+  found for this month, sorted by it's link url
 
 Here's the original Code ...
 

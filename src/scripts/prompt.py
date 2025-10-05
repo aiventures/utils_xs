@@ -1,4 +1,4 @@
-"""handling the rendering of a prompt.
+"""handling the rendering of a prompt in Windows Command Line.
 COLORS CODES TO BE USED in bat file to be generated
 
 """
@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # create modules using bat2py.bat
+# best to install the utils into a venv anyway
 from config.myenv import MY_F_MYENV_PROMPT
 from config.colors import C_B, C_P, C_V, C_SC0, C_SC1, C_0, C_1
 
