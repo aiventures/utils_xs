@@ -48,7 +48,13 @@ echo args4
 goto end
 
 :end
+rem show the dialogue with the available paths
 python "%py_program%" --paths "%p_bat%"
+rem run the command if there is one 
+set /p my_cmd=< %MY_F_MYENV_CMD%
+echo %C_H%RUN COMMAND%C_PY% %my_cmd% %C_0%
+%my_cmd%
+set myenv_cmd=
 set num_args=
 set pwd=
 set py_program=

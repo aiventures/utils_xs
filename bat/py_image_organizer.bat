@@ -3,6 +3,8 @@ rem py_image_organizer.bat [input_path|optional] [output_path|optional] Auto Org
 
 call colors.bat %*
 call myenv.bat %*
+rem activate venv for correct path resolution
+call va.bat
 
 set pwd=%CD%
 set "py_program="%MY_P_UTILS_SCRIPTS%\image_organizer.py""
@@ -66,7 +68,6 @@ goto end
 set "cmd_params=--input %path_input% --output %path_output%"
 echo %C_H%RUN %C_PY%%py_program% %cmd_params%%C_0%
 python %py_program% %cmd_params%
-set cmd_params=
 set p1=
 set p2=
 set p3=

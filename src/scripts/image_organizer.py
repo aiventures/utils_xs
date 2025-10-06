@@ -128,10 +128,23 @@ from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
 
 
 # Define image suffixes and default paths
-image_suffixes = ["jpg", "jpeg", "raf", "dng"]
+IMAGE_SUFFIXES = ["jpg", "jpeg", "raf", "dng"]
 CMD_EXIF = MY_CMD_EXIFTOOL
 P_PHOTO_DUMP_DEFAULT = Path(MY_P_PHOTO_DUMP)
 P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
+# CREATE THE BASE EXIFTOOL CMD
+
+
+def get_base_exiftool_cmd(input_folder: Path) -> list:
+    """creates the base exiftool command to export image data"""
+    suffix_args = []
+    for ext in IMAGE_SUFFIXES:
+        suffix_args.extend(["-ext", ext])
+
+    # command to export all exifdata in groups as json for given suffixes
+    # progress is shown every 50 images
+    exif_cmd = [CMD_EXIF, "-r", "-g", "-progress50"] + suffix_args + ["-json", str(input_folder)]
+    return exif_cmd
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -192,20 +205,27 @@ def run_exiftool(input_folder: Path, output_root: Path) -> None:
         output_root (Path): Folder where metadata.json will be saved.
 
     Prints:
-        Status messages indicating success or failure.
+        Status messages and exiftool progress output.
     """
-    suffix_args = []
-    for ext in image_suffixes:
-        suffix_args.extend(["-ext", ext])
+
     output_path = input_folder / "metadata.json"
-    cmd = [CMD_EXIF, "-r", "-g"] + suffix_args + ["-json", str(input_folder)]
+    cmd = get_base_exiftool_cmd(input_folder)
+
+    print(f"\n{C_T}### Running exiftool for metadata extraction in {C_P}{input_folder}{C_T}...{C_0}")
+
     with output_path.open("w", encoding="utf-8") as outfile:
-        print(f"{C_PY}Running exiftool for metadata extraction...{C_0}")
-        completed = subprocess.run(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True, check=False)
-        if completed.returncode != 0:
-            print(f"{C_E}Exiftool failed: {completed.stderr}{C_0}")
+        process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
+
+        # Stream exiftool progress to console
+        for line in process.stderr:
+            print(f"{C_PY}{line.strip()}{C_0}")
+
+        process.wait()
+
+        if process.returncode != 0:
+            print(f"{C_E}Exiftool failed for {input_folder}{C_0}")
         else:
-            print(f"{C_PY}Metadata saved to {output_path}{C_0}")
+            print(f"{C_H}Metadata successfully saved to {C_P}{output_path}{C_0}")
 
 
 def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
@@ -372,31 +392,33 @@ def move_files_by_date(input_folder: Path, output_root: Path, file_dict: Dict[st
 def summarize_and_update_metadata(output_root: Path, date_list: List[str]) -> List[Dict[str, Union[str, int]]]:
     """
     For each YYYYMMDD folder in output_root, count the files and rerun exiftool to export metadata.json.
-
-    Args:
-        output_root (Path): The root output folder containing dated subfolders.
-        date_list (List[str]): List of date folder names (YYYYMMDD).
-
-    Returns:
-        List[Dict[str, Union[str, int]]]: List of dictionaries with 'date' and 'file_count' keys.
+    Displays exiftool progress and output during execution.
     """
     summary = []
-    suffix_args = []
-    for ext in image_suffixes:
-        suffix_args.extend(["-ext", ext])
 
     for date_str in date_list:
         folder_path = output_root / date_str
         if folder_path.exists() and folder_path.is_dir():
             files = list(folder_path.glob("*.*"))
             file_count = len(files)
-            # Run exiftool for each dated folder, output metadata.json there
             metadata_path = folder_path / "metadata.json"
-            cmd = [CMD_EXIF, "-r", "-g"] + suffix_args + ["-json", str(folder_path)]
+
+            print(f"\n{C_T}### Writing Metadata: {C_P}{folder_path}{C_T} ---")
+            print(f"Found {C_I}{file_count}{C_T} files. Running exiftool...{C_0}")
+
+            cmd = get_base_exiftool_cmd(folder_path)
+
             with metadata_path.open("w", encoding="utf-8") as outfile:
-                completed = subprocess.run(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True, check=False)
-                if completed.returncode != 0:
-                    print(f"{C_E}Exiftool failed in folder {folder_path}: {completed.stderr}{C_0}")
+                process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
+
+                # Stream stderr (exiftool progress and messages) to the console in real time
+                for line in process.stderr:
+                    print(f"{C_PY}{line.strip()}{C_0}")
+
+                process.wait()
+
+                if process.returncode != 0:
+                    print(f"{C_E}Exiftool failed in folder {folder_path}{C_0}")
 
             summary.append({"date": date_str, "file_count": file_count})
 
@@ -470,9 +492,11 @@ def main() -> None:
     # Summarize folders and update metadata.json in each dated folder
     date_list = list(set(entry["date"] for entry in file_dict.values()))
     summary = summarize_and_update_metadata(output_root, date_list)
-    print(f"\n{C_T}Summary of moved files per date (in {output_root} ):{C_0}")
+    print(f"\n{C_T}### Summary of moved files per date (in {output_root} ):{C_0}")
     for idx, entry in enumerate(summary):
-        print(f"{C_I}[{str(idx).zfill(2)}] {C_P}[{entry['date']}]{C_H}, Files moved:{C_B} {entry['file_count']}{C_0}")
+        print(
+            f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}[{entry['date']}]{C_H}, Files moved:{C_B} {entry['file_count']}{C_0}"
+        )
 
 
 if __name__ == "__main__":

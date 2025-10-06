@@ -29,6 +29,7 @@ As python keeps its Environment within its runtime environment, there's a trick:
 * 🟨 `20251006` Create a JSON from Python Constants Code 
 * 🟨 `20251006` Create a markdown toc summary function (`20251006`) 
 * 🟨 `20251006` Create shortcuts for frequently used `Git`, `Pip` and `VENV` commands
+* 🟨 `20251006` Create shortcut to total commander
 
 # DONE
 
