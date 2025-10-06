@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """handling the rendering of a prompt in Windows Command Line.
 COLORS CODES TO BE USED in bat file to be generated
 

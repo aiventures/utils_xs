@@ -1,6 +1,6 @@
 [project]
 dynamic = ["dependencies", "optional-dependencies"]
-name = "hf_utils"
+name = "utils_xs"
 requires-python = ">=3.11"
 description = "command line utils"
 version = "0.1.0"

@@ -1,6 +1,6 @@
 
 @echo off
-rem bat2py.bat synchs variables and colors from bat to python
+rem bat2py.bat synchs variables and colors from bat to python using py_convert_env.bat and py_convert_colors.bat
 set pwd=%CD%
 
 call colors.bat

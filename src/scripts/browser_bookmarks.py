@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """browser_bookmarks creates a markdown version of exported bookmarks favoriten favorites from browser.
 
 v4 top (=latest)
@@ -148,6 +149,7 @@ from datetime import datetime, timedelta
 # create this module using bat2py.bat
 # best to install the utils into a venv anyway
 from config.myenv import MY_P_DESKTOP
+
 
 def generate_floating_sidebar(anchors):
     """Returns HTML+CSS for a right-aligned floating TOC sidebar"""

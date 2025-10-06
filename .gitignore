@@ -177,3 +177,4 @@ src/config/myenv.py
 bat/myenv.py
 bat/myenv.bat
 .vscode/settings.json
+.vscode/bookmarks.json

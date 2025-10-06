@@ -70,6 +70,7 @@ write a python script:
   insensitive. If not query term is supplied, then treat this as default case, so that the complete list is shown.
   Also in the list, color highlight the found search terms in the text output using
   a new C_H color code (using a pink ANSI COlor) to highlight the occurences of the query terms.
+- use a main function and put the logic into a def main function so that the program can also run stand alone
 - move the argparser construction into a separate function
 - add docstrings to each function
 - add type hints to all functions and variable declarations. Add new typing definitions such as Union

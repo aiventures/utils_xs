@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Converts a .bat file containing color constants to a Python constants file."""
 
 import re
