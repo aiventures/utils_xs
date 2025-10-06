@@ -178,3 +178,4 @@ bat/myenv.py
 bat/myenv.bat
 .vscode/settings.json
 .vscode/bookmarks.json
+src/config/colors.py
