@@ -1,0 +1,479 @@
+#!/usr/bin/env python3
+"""Moves Image according to their timestamps.
+
+SUMMARY
+
+This Python program automates organizing image files by their creation dates extracted from metadata.
+It uses exiftool to recursively scan a specified input folder for images with defined suffixes,
+generating a JSON metadata file. The metadata is processed to map each image’s unique identifier
+(last four digits of its filename) to its creation date. The program then creates date-based folders
+(YYYYMMDD) in a specified output root and moves each image into the appropriate dated folder, displaying
+a colorful progress bar during the move. It supports command-line arguments or interactive input for
+input/output paths, handles errors for unmapped files, and employs ANSI colors for enhanced console messaging.
+The implementation is modular with clear docstrings and type hints for maintainability and reuse.
+
+PROMPT
+
+Program Overview
+- write a program using Python to automatically create folders by date and move image files from a path where image files were dumped
+- As Input Image, use image files with that are defined for a set of image suffixes: image_suffixes=["jpg","jpeg","heif","png","tif"] .
+  The file name usually conforms to a length of 8 Characters with the last 4 characters being a numerical character, in short an image
+  file looks like ccccnnnn.jpg (c any character, n a number 0123456789).
+steps to do this
+- Use a F_CMD_EXIF variable to define the location of the exiftool.exe file
+- Use a default path P_IMAGE_DUMP_DEFAULT as a default source root folder and P_OUTPUT_ROOT_DEFAULT as a default root folder
+- Add argparse arguments for P_IMAGE_DUMP (default P_IMAGE_DUMP_DEFAULT) and root folder P_OUTPUT_ROOT (default P_OUTPUT_ROOT_DEFAULT) for output folders.
+- For the case nothing is supplied, ask the user for the path. In case user will enter nothing for the output root folder path, then use P_OUTPUT_ROOT_DFEFAULT.
+  If nothing is entered for the input folder, use the current folder as input folder.
+
+Program steps
+- In path P_IMAGE_DUMP_DEFAULT, execute the command F_CMD_EXIF -r -g -ext jpg -ext jpeg -json . > P_OUTPUT_ROOT/metadata.json
+  - For F_CMD_EXIF, use the path to the exiftool executable
+  - Export rhe metadata.json to the folder stored in P_OUTPUT_ROOT
+  - For the set of -ext parameters use the suffixes defined in the image_suffixes list
+  - the P_OUTPUT_ROOT/metadata.json file will be a json list of entries (one entry per image file).
+    ```
+        [
+        {"SourceFile": "./ccccnnnn.JPG",
+         "Composite":{
+           "SubSecDateTimeOriginal": "2025:06:07 16:10:27.065+02:00",
+         }
+        }
+        ]
+        ```
+  - Sections for each entry that need to be analyzed is
+    "SourceFile" containing the file name ccccnnnn.JPG" and "Composite['SubSecDateTimeOriginal']" containing a datetime string with timezone:
+        "2025:06:07 16:10:27.065+02:00" (%Y:%m:%d %H:%M:%S.%f+%z) with
+        %Y — 4-digit year (YYYY)
+        %m — 2-digit month (MM)
+        %d — 2-digit day (DD)
+        %H — 2-digit hour (24-hour)
+        %M — 2-digit minute
+        %S — 2-digit second
+        %z — time zone offset (+/-hhmm)
+        %f — fractional seconds
+  - Perform the following tasks:
+    - read the P_OUTPUT_ROOT/metadata.json (using a read_json function) into a dict file_dict
+        - process all image entries and create an output dictionary file_dict:
+          - as key use the "nnnn" part of the file
+          - as value for each dict entry use the following attributes
+            - "key": the "nnnn" part of each file from "SourceFile"
+                - "filename": field contents of  "SourceFile", but without the path
+        - "datetime_created": datetime.dateime object transformed from SubSecDateTimeOriginal (using correct time zone offset)
+                - "date": datetime_created transformed as an 8 character string matching YYYYMMDD
+        - save this output dictionary to the selected input folder named file_dump.json. Also take care to transform datetime_created
+          into a string before saving to json (otherwise you'd get an error).
+        - also collect all occured dates (YYYYMMDD) in a date_list. make sure date_list doesn't contain duplicates.
+        - move all files in the P_IMAGE_DUMP_DEFAULT to another path according to the output dictionary and the date_list:
+          - Create new path folders below P_OUTPUT_ROOT: Loop through all date strings in the date_list list. If not already created,
+            create a new folder according to the date schema YYYYMMDD as child paths in P_OUTPUT_ROOT
+          - Now Loop over all file names in P_IMAGE_DUMP and move each file according to this logic:
+            - From the file name of each file in the path,  extract any occuring sequence consisting of numbers only. If found,
+                  truncate this number to the last four digits.
+                - use these last four digits as key to look up in the file_dict dictionary. If found move that file to the correspinding
+                  folder in P_OUTPUT_ROOT/YYYYMMDD, with YYYYMMDD the value found in "date" attribute of the dict entry
+    - during file move show a progress bar (perecentage of files moved, with the number of files in the input folder) using
+          output of the progress in a single line using things like:
+          ```
+                sys.stdout.write(f"\rProgress: {i}%")
+                sys.stdout.flush()
+          ```
+          The progress bar should always have a length of 20 characters, and block emojis of different colors represent 5% progress each
+          🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦 should represent 0% progress (blue is not completed )
+          🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦 should represent 50%
+          🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟨🟨🟨🟨🟧🟧🟧🟧🟥🟥 should represent 100%
+    - Also add a string (n/N) Files moved behind the progress bar (n number of files moved, N total number of files)
+        - collect any file names where no dict entry could be found.
+        - after moving is completed, list all files that couldn't be moved as error messages. Or in case all file could be moved, isssue a success message
+
+Also add to the program
+- Add ANSI COLOR CODES so it is possible to use colored output using f strings like f"{C_T}text{C_0}".
+  Use following Color Codes according to their denoted meaning and proposals for ansi color code to use
+  rem reset all color formatting
+  - C_0 (COL_RESET) is used for resetting color to default pronpt colors
+  - C_T (COL_BLUE_SKY)
+  - C_S search keys (COL_ORANGE)
+  - C_F file keys for rendering file paths (COL_BLUE_SKY)
+  - C_H highlighted output of print text (COL_YELLOW_PALE_229)
+  - C_PY program output like print statements from python (COL_GREEN)
+  - C_Q prompt color for user input
+  - C_PROG When the program name is used as output this color code is used (COL_PINK)
+  - C_ERR and C_E Error message color
+  - C_I Index number color  in a list (COL_GREEN_AQUA_85)
+- Add color codes to the output / print statements
+- modularize logic into functions for future reuse
+- use a main function and put the logic into a def main function so that the program can also run stand alone
+- for constructing paths and to ensure cross platform compatibility, use Path from pathlib module
+- add docstrings to each function
+- add type hints to all functions and variable declarations. Add new typing definitions such as Union
+- move the argparser construction into a separate function
+
+"""
+
+import re
+import argparse
+import json
+from json import JSONDecodeError
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Union
+from dateutil import parser as date_parser
+
+# ANSI color codes
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B
+from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
+# Paths from environemt
+
+
+# Define image suffixes and default paths
+image_suffixes = ["jpg", "jpeg", "raf", "dng"]
+CMD_EXIF = MY_CMD_EXIFTOOL
+P_PHOTO_DUMP_DEFAULT = Path(MY_P_PHOTO_DUMP)
+P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """
+    Create and return a command-line argument parser for the program.
+
+    The parser supports optional input folder and output root folder arguments,
+    both defaulting to None to allow interactive prompts if not provided.
+
+    Returns:
+        argparse.ArgumentParser: Configured argument parser.
+    """
+    parser = argparse.ArgumentParser(description="Auto organize images by date using exif metadata.")
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        default=None,
+        help="Source folder path where images were dumped (default: current folder if empty)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=None,
+        help=f"Output root folder where date folders are created (default: {P_PHOTOS_TRANSIENT_DEFAULT})",
+    )
+    return parser
+
+
+def read_json(filepath: Path) -> Union[Dict[str, Any], List[Any]]:
+    """
+    Read a JSON file from a given filepath and return its content.
+
+    Args:
+        filepath (Path): Path to the JSON file to read.
+
+    Returns:
+        Union[Dict[str, Any], List[Any]]: Parsed JSON data as a dictionary or list.
+    """
+    try:
+        with filepath.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except (TypeError, JSONDecodeError) as _:
+        print(f"{C_E}Couldn't read [{filepath}]")
+        return {}
+
+
+def run_exiftool(input_folder: Path, output_root: Path) -> None:
+    """
+    Execute exiftool to extract metadata from image files in the input folder recursively.
+
+    Runs exiftool with options to generate JSON metadata including specified image extensions,
+    and writes the output to 'metadata.json' inside the output root folder.
+
+    Args:
+        input_folder (Path): Folder path containing images to analyze.
+        output_root (Path): Folder where metadata.json will be saved.
+
+    Prints:
+        Status messages indicating success or failure.
+    """
+    suffix_args = []
+    for ext in image_suffixes:
+        suffix_args.extend(["-ext", ext])
+    output_path = input_folder / "metadata.json"
+    cmd = [CMD_EXIF, "-r", "-g"] + suffix_args + ["-json", str(input_folder)]
+    with output_path.open("w", encoding="utf-8") as outfile:
+        print(f"{C_PY}Running exiftool for metadata extraction...{C_0}")
+        completed = subprocess.run(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True, check=False)
+        if completed.returncode != 0:
+            print(f"{C_E}Exiftool failed: {completed.stderr}{C_0}")
+        else:
+            print(f"{C_PY}Metadata saved to {output_path}{C_0}")
+
+
+def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
+    """
+    Process the metadata JSON file to build a dictionary keyed by last four digits of filenames.
+
+    Extracts datetime from 'SubSecDateTimeOriginal', converts it to a datetime object,
+    extracts date string in YYYYMMDD format, and organizes data for each image.
+
+    Args:
+        metadata_path (Path): Path to the metadata JSON file.
+
+    Returns:
+        Dict[str, dict]: Dictionary mapping 4-digit keys to metadata with keys:
+                         'key', 'filename', 'datetime_created' (datetime object), and 'date' string.
+    """
+    raw_data = read_json(metadata_path)
+    output_dict = {}
+    if len(raw_data) == 0:
+        return {}
+
+    for entry in raw_data:
+        try:
+            source_file = entry["SourceFile"]
+            dt_str = entry["Composite"]["SubSecDateTimeOriginal"]
+            # transform dashes since they seem to lead to date
+            # interpolation erorrs
+            # 2025-10-06T19:03:19.400000+02:00
+            dt_str = dt_str.replace(":", "-", 2)
+            dt_obj = date_parser.parse(dt_str)
+            date_str = dt_obj.strftime("%Y%m%d")
+            filename = Path(source_file).name
+            key = filename[-8:-4]  # last 4 digits as key
+            output_dict[key] = {"key": key, "filename": filename, "datetime_created": dt_obj, "date": date_str}
+        except Exception:
+            # Skip entries missing required fields or malformed
+            print(f"Error trying to parse {entry}")
+            continue
+    return output_dict
+
+
+def save_processed_dict(output_dict: Dict[str, dict], save_path: Path) -> None:
+    """
+    Save the processed metadata dictionary to a JSON file.
+
+    Converts all datetime objects to ISO 8601 strings for JSON serialization.
+
+    Args:
+        output_dict (Dict[str, dict]): Dictionary to save.
+        save_path (Path): Path where the JSON file will be written.
+    """
+    output_serializable = {}
+    for k, v in output_dict.items():
+        out_val = v.copy()
+        out_val["datetime_created"] = v["datetime_created"].isoformat()
+        output_serializable[k] = out_val
+
+    with save_path.open("w", encoding="utf-8") as f:
+        json.dump(output_serializable, f, indent=2)
+
+
+def extract_number_key(filename: str) -> Union[str, None]:
+    """
+    Extract the last four digits of the last numerical sequence found in a filename.
+
+    Args:
+        filename (str): The filename string to search.
+
+    Returns:
+        Union[str, None]: The extracted four-digit key, or None if no number found.
+    """
+
+    numbers = re.findall(r"\d+", filename)
+    if not numbers:
+        return None
+    last_number = numbers[-1]
+    return last_number[-4:] if len(last_number) >= 4 else last_number
+
+
+def create_date_folders(output_root: Path, date_list: List[str]) -> None:
+    """
+    Create directories named by dates in YYYYMMDD format inside the output root folder.
+
+    Args:
+        output_root (Path): Root folder where date folders should be created.
+        date_list (List[str]): List of date strings (YYYYMMDD).
+    """
+    for date_str in date_list:
+        folder_path = output_root / date_str
+        if not folder_path.exists():
+            folder_path.mkdir(parents=True, exist_ok=True)
+
+
+def show_progress(num_moved: int, total: int) -> None:
+    """
+    Display a progress bar on the terminal for file moving operations.
+
+    The progress bar uses colored block emojis and shows percentage and count.
+
+    Args:
+        num_moved (int): Number of files moved so far.
+        total (int): Total number of files to move.
+    """
+    percent = num_moved / total if total else 1.0
+    blocks_total = 20
+    blocks_done = int(percent * blocks_total)
+    blue_block = "🟦"
+    green_block = "🟩"
+    yellow_block = "🟨"
+    orange_block = "🟧"
+    red_block = "🟥"
+
+    if percent < 0.5:
+        progressbar = green_block * blocks_done + blue_block * (blocks_total - blocks_done)
+    elif percent < 1.0:
+        progressbar = green_block * 10 + yellow_block * (blocks_done - 10) + blue_block * (blocks_total - blocks_done)
+    else:
+        progressbar = green_block * 10 + yellow_block * 4 + orange_block * 4 + red_block * 2
+
+    percent_display = int(percent * 100)
+    sys.stdout.write(f"\r{C_T}Progress: {progressbar} {percent_display}% {C_I}({num_moved}/{total}){C_0}")
+    sys.stdout.flush()
+
+
+def move_files_by_date(input_folder: Path, output_root: Path, file_dict: Dict[str, dict]) -> List[str]:
+    """
+    Move image files from input folder to dated subfolders in output root based on metadata keys.
+
+    Uses the last four digits extracted from filenames to find the corresponding date folder.
+
+    Args:
+        input_folder (Path): Folder containing image files to move.
+        output_root (Path): Root folder where dated folders exist or will be created.
+        file_dict (Dict[str, dict]): Dictionary mapping keys to image metadata.
+
+    Returns:
+        List[str]: List of filenames that could not be moved due to missing key in dictionary.
+    """
+    files = list(input_folder.glob("*.*"))
+    total_files = len(files)
+    moved_count = 0
+    errors = []
+
+    date_list = list(set(entry["date"] for entry in file_dict.values()))
+    create_date_folders(output_root, date_list)
+
+    for i, file_path in enumerate(files, start=1):
+        key = extract_number_key(file_path.name)
+        if key and key in file_dict:
+            date_folder = output_root / file_dict[key]["date"]
+            dest = date_folder / file_path.name
+            try:
+                shutil.move(str(file_path), str(dest))
+                moved_count += 1
+            except Exception:
+                errors.append(file_path.name)
+        else:
+            errors.append(file_path.name)
+        show_progress(i, total_files)
+    print()  # newline after progress bar
+    return errors
+
+
+def summarize_and_update_metadata(output_root: Path, date_list: List[str]) -> List[Dict[str, Union[str, int]]]:
+    """
+    For each YYYYMMDD folder in output_root, count the files and rerun exiftool to export metadata.json.
+
+    Args:
+        output_root (Path): The root output folder containing dated subfolders.
+        date_list (List[str]): List of date folder names (YYYYMMDD).
+
+    Returns:
+        List[Dict[str, Union[str, int]]]: List of dictionaries with 'date' and 'file_count' keys.
+    """
+    summary = []
+    suffix_args = []
+    for ext in image_suffixes:
+        suffix_args.extend(["-ext", ext])
+
+    for date_str in date_list:
+        folder_path = output_root / date_str
+        if folder_path.exists() and folder_path.is_dir():
+            files = list(folder_path.glob("*.*"))
+            file_count = len(files)
+            # Run exiftool for each dated folder, output metadata.json there
+            metadata_path = folder_path / "metadata.json"
+            cmd = [CMD_EXIF, "-r", "-g"] + suffix_args + ["-json", str(folder_path)]
+            with metadata_path.open("w", encoding="utf-8") as outfile:
+                completed = subprocess.run(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True, check=False)
+                if completed.returncode != 0:
+                    print(f"{C_E}Exiftool failed in folder {folder_path}: {completed.stderr}{C_0}")
+
+            summary.append({"date": date_str, "file_count": file_count})
+
+    return summary
+
+
+def main() -> None:
+    """
+    Main function that orchestrates reading arguments, running exiftool,
+    processing metadata, moving files, updating metadata in date folders,
+    and printing results.
+
+    Interactively prompts for inputs if no arguments are specified.
+    """
+    parser = build_arg_parser()
+    args = parser.parse_args()
+
+    # Determine input folder
+    input_folder = args.input
+    if input_folder is None:
+        inp = input(f"{C_Q}Enter input folder path (default current folder): {C_0}").strip()
+        if inp:
+            input_folder = Path(inp)
+        else:
+            input_folder = Path.cwd()
+            # input_folder = P_IMAGE_DUMP_DEFAULT
+    else:
+        input_folder = Path(input_folder)
+
+    if not input_folder.exists() or not input_folder.is_dir():
+        print(f"{C_E}Input folder {input_folder} not found or invalid.{C_0}")
+        return
+
+    # Determine output root folder
+    output_root = args.output
+    if output_root is None:
+        outp = input(f"{C_Q}Enter output root folder path (default {P_PHOTOS_TRANSIENT_DEFAULT}): {C_0}").strip()
+        if outp:
+            output_root = Path(outp)
+        else:
+            output_root = P_PHOTOS_TRANSIENT_DEFAULT
+    else:
+        output_root = Path(output_root)
+
+    if not output_root.exists():
+        output_root.mkdir(parents=True, exist_ok=True)
+
+    # Run exiftool to generate metadata.json for input folder
+    run_exiftool(input_folder, output_root)
+
+    metadata_path = input_folder / "metadata.json"
+    if not metadata_path.exists():
+        print(f"{C_E}Metadata file not found. Exiftool may have failed.{C_0}")
+        return
+
+    # Process metadata.json
+    file_dict = process_metadata_json(metadata_path)
+    save_processed_dict(file_dict, input_folder / "file_dump.json")
+    print(f"{C_PY}Processed metadata saved as file_dump.json in input folder.{C_0}")
+
+    # Move files by date
+    errors = move_files_by_date(input_folder, output_root, file_dict)
+
+    if errors:
+        print(f"{C_E}The following files could not be moved:{C_0}")
+        for efile in errors:
+            print(f"{C_E} - {efile}{C_0}")
+    else:
+        print(f"{C_PY}All files moved successfully.{C_0}")
+
+    # Summarize folders and update metadata.json in each dated folder
+    date_list = list(set(entry["date"] for entry in file_dict.values()))
+    summary = summarize_and_update_metadata(output_root, date_list)
+    print(f"\n{C_T}Summary of moved files per date (in {output_root} ):{C_0}")
+    for idx, entry in enumerate(summary):
+        print(f"{C_I}[{str(idx).zfill(2)}] {C_P}[{entry['date']}]{C_H}, Files moved:{C_B} {entry['file_count']}{C_0}")
+
+
+if __name__ == "__main__":
+    main()
