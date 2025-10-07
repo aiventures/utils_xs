@@ -328,6 +328,59 @@ def create_openstreetmap_shortcut(lat: float, lon: float) -> str:
     return shortcut
 
 
+def get_gpx_file_from_folder(folder: Optional[Path] = None) -> Optional[str]:
+    """
+    Scans a folder for .gpx files and writes the selected filename to F_GPX_ENV.
+    Deletes any existing F_GPX_ENV file before writing.
+
+    Args:
+        folder (Optional[Path]): Folder to scan. Defaults to current directory.
+
+    Returns:
+        Optional[str]: Selected GPX filename or None if no file was selected.
+    """
+    folder = folder or Path.cwd()
+    if not folder.exists() or not folder.is_dir():
+        print(f"{C_E}Invalid folder: {folder}{C_0}")
+        return None
+
+    env_file = folder / F_GPX_ENV
+    if env_file.exists():
+        try:
+            env_file.unlink()
+            print(f"{C_T}Deleted existing {env_file}{C_0}")
+        except Exception as e:
+            print(f"{C_E}Failed to delete {env_file}: {e}{C_0}")
+
+    gpx_files = list(folder.glob("*.gpx"))
+    if not gpx_files:
+        print(f"{C_E}No GPX files found in {folder}{C_0}")
+        return None
+
+    if len(gpx_files) == 1:
+        selected = gpx_files[0].name
+        try:
+            env_file.write_text(selected + "\n", encoding="utf-8")
+            print(f"{C_H}Saved GPX filename [{selected}] to {C_P}{env_file}{C_0}")
+        except Exception as e:
+            print(f"{C_E}Failed to write GPX filename: {e}{C_0}")
+        return selected
+
+    print(f"{C_T}Multiple GPX files found:{C_0}")
+    for idx, f in enumerate(gpx_files):
+        print(f"{C_I}[{idx}] {C_P}{f.name}{C_0}")
+
+    try:
+        choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
+        selected = gpx_files[choice].name
+        env_file.write_text(selected + "\n", encoding="utf-8")
+        print(f"{C_H}Saved GPX filename [{selected}] to {C_P}{env_file}{C_0}")
+        return selected
+    except (ValueError, IndexError):
+        print(f"{C_E}Invalid selection. No GPX file saved.{C_0}")
+        return
+
+
 def get_base_exiftool_cmd(input_folder: Path) -> list:
     """creates the base exiftool command to export image data"""
     suffix_args = []
