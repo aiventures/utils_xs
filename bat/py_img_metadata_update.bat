@@ -1,5 +1,5 @@
 @echo off
-rem py_image_organizer.bat [input_path|optional] [output_path|optional] Auto Organize Images into Folders (image_organizer.py)
+rem py_img_metadata_update.bat [output_path|optional] Updates the metadata.json for each subfolder based on EXIF data
 
 call colors.bat %*
 call myenv.bat %*
@@ -50,22 +50,22 @@ goto args2
 
 :args2
 rem your code for arg2 here
-set "path_output=%2"
+set "path_input=%2"
 rem echo args2
-set "cmd_params=%cmd_params% --output %path_output%"
+set "cmd_params=%cmd_params% --input %path_output%"
 rem as there are 2 args process param 1
 goto args1
 
 :args1
 rem your code for arg1 here, usually 1st param should be path_input adjust otherwise
 echo args1
-set "path_input=%1"
-set "cmd_params=%cmd_params% --input %path_input%"
+set "path_output=%1"
+set "cmd_params=%cmd_params% --output %path_output%"
 rem python "%py_program%" --p1 "%MY_F_MYENV_BAT%" --output "%MY_F_MYENV_PY%"
 goto end
 
 :end
-set "cmd_params=--input %path_input% --output %path_output%"
+set "cmd_params=--output %path_output% --update"
 echo %C_H%RUN %C_PY%%py_program% %cmd_params%%C_0%
 python %py_program% %cmd_params%
 set p1=

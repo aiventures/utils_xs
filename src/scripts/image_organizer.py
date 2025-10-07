@@ -14,6 +14,13 @@ The implementation is modular with clear docstrings and type hints for maintaina
 
 PROMPT
 
+V1
+add another function:  check the --output folder and all its first level children folders and apply
+the run_exiftool on each of those folders to update the metadata.json files there
+add another argparse argument -u --update to run this function from command line
+
+ORIGINAL
+
 Program Overview
 - write a program using Python to automatically create folders by date and move image files from a path where image files were dumped
 - As Input Image, use image files with that are defined for a set of image suffixes: image_suffixes=["jpg","jpeg","heif","png","tif"] .
@@ -172,6 +179,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"Output root folder where date folders are created (default: {P_PHOTOS_TRANSIENT_DEFAULT})",
     )
+    parser.add_argument(
+        "-u",
+        "--update",
+        action="store_true",
+        help="Update metadata.json in output folder and all its first-level subfolders",
+    )
     return parser
 
 
@@ -193,7 +206,7 @@ def read_json(filepath: Path) -> Union[Dict[str, Any], List[Any]]:
         return {}
 
 
-def run_exiftool(input_folder: Path, output_root: Path) -> None:
+def create_from_exiftool(input_folder: Path, output_root: Path) -> None:
     """
     Execute exiftool to extract metadata from image files in the input folder recursively.
 
@@ -265,6 +278,42 @@ def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
             print(f"Error trying to parse {entry}")
             continue
     return output_dict
+
+
+def update_metadata_in_all_subfolders(output_root: Path) -> None:
+    """
+    Run exiftool on all first-level subfolders of output_root to update metadata.json files.
+    Skips the root folder itself.
+
+    Args:
+        output_root (Path): The root folder containing dated subfolders.
+    """
+    child_folders = [f for f in output_root.iterdir() if f.is_dir()]
+    summary = []
+
+    print(f"\n{C_T}### Updating metadata.json in {len(child_folders)} subfolders...{C_0}")
+    for folder in child_folders:
+        metadata_path = folder / "metadata.json"
+        files = list(folder.glob("*.*"))
+        file_count = len(files)
+
+        print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
+        cmd = get_base_exiftool_cmd(folder)
+        with metadata_path.open("w", encoding="utf-8") as outfile:
+            process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
+            for line in process.stderr:
+                print(f"{C_PY}{line.strip()}{C_0}")
+            process.wait()
+
+        status = "✅ Success" if process.returncode == 0 else "❌ Failed"
+        summary.append({"folder": folder.name, "file_count": file_count, "status": status})
+
+    print(f"\n{C_T}### Metadata Update Summary:{C_0}")
+    for idx, entry in enumerate(summary):
+        print(
+            f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}{entry['folder']}{C_H}: "
+            f"{C_B}{entry['file_count']} files, {entry['status']}{C_0}"
+        )
 
 
 def save_processed_dict(output_dict: Dict[str, dict], save_path: Path) -> None:
@@ -436,6 +485,21 @@ def main() -> None:
     parser = build_arg_parser()
     args = parser.parse_args()
 
+    if args.update:
+        output_root = args.output
+        if output_root is None:
+            outp = input(
+                f"{C_Q}Enter output root folder path for update (default {P_PHOTOS_TRANSIENT_DEFAULT}): {C_0}"
+            ).strip()
+            output_root = Path(outp) if outp else P_PHOTOS_TRANSIENT_DEFAULT
+        else:
+            output_root = Path(output_root)
+        if not output_root.exists() or not output_root.is_dir():
+            print(f"{C_E}Output folder {output_root} not found or invalid.{C_0}")
+            return
+        update_metadata_in_all_subfolders(output_root)
+        return  # Exit after update
+
     # Determine input folder
     input_folder = args.input
     if input_folder is None:
@@ -467,7 +531,7 @@ def main() -> None:
         output_root.mkdir(parents=True, exist_ok=True)
 
     # Run exiftool to generate metadata.json for input folder
-    run_exiftool(input_folder, output_root)
+    create_from_exiftool(input_folder, output_root)
 
     metadata_path = input_folder / "metadata.json"
     if not metadata_path.exists():
