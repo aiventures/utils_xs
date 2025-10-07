@@ -30,6 +30,8 @@ As python keeps its Environment within its runtime environment, there's a trick:
 * 🟨 `20251006` Create a markdown toc summary function (`20251006`) 
 * 🟨 `20251006` Create shortcuts for frequently used `Git`, `Pip` and `VENV` commands
 * 🟨 `20251006` Create shortcut to total commander
+* 🟨 `20251007` Use Image Magick to create Thumbnails in SML 
+* 🟨 `20251007` Add logic to extract locations 
 
 # DONE
 
