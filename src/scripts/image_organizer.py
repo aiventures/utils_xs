@@ -159,11 +159,13 @@ from json import JSONDecodeError
 import datetime
 import shutil
 import subprocess
+import traceback
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Union
 from dateutil import parser as date_parser
 from zoneinfo import ZoneInfo
+from configparser import ConfigParser
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B
@@ -180,6 +182,45 @@ P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
 # T_CAMERA - T_GPS = T_OFFSET
 F_TIMESTAMP_GPS = "timestamp_gps.json"
 F_TIMESTAMP_CAMERA = "timestamp_camera.json"
+F_OFFSET = "offset.env"
+
+
+def read_internet_shortcut(f: str, showinfo=False):
+    """reads an Internet shortcut from filepath, returns the url or None
+    if nothing could be found"""
+    url = None
+    cp = ConfigParser(interpolation=None)
+
+    try:
+        cp.read(str(f))
+    except Exception as ex:
+        print(f"--- EXCEPTION read_internet_shortcut:{ex} ---")
+        print(traceback.format_exc())
+        return None
+
+    sections = cp.sections()
+
+    for section in sections:
+        options = cp.options(section)
+        if showinfo:
+            print("Section:", section)
+            print("- Options:", options)
+
+        for option in options:
+            v = cp.get(section, option)
+            if showinfo:
+                print(f" {option} : {v}")
+            if (section == "InternetShortcut") and (option == "url"):
+                url = v
+
+    return url
+
+
+def create_openstreetmap_shortcut(lat: float, lon: float) -> str:
+    """Shorcut Link"""
+    shortcut_lines = ["[InternetShortcut]", f"URL=https://www.openstreetmap.org/#map={lat:.7f}/{lon:.5f}"]
+    shortcut = "\n".join(shortcut_lines)
+    return shortcut
 
 
 def get_base_exiftool_cmd(input_folder: Path) -> list:
@@ -190,7 +231,8 @@ def get_base_exiftool_cmd(input_folder: Path) -> list:
 
     # command to export all exifdata in groups as json for given suffixes
     # progress is shown every 50 images
-    exif_cmd = [CMD_EXIF, "-r", "-g", "-progress50"] + suffix_args + ["-json", str(input_folder)]
+    # the c command is to format gps coordinates as decimals
+    exif_cmd = [CMD_EXIF, "-r", "-g", "-c", "'%.6f'", "-progress50"] + suffix_args + ["-json", str(input_folder)]
     return exif_cmd
 
 
@@ -431,14 +473,17 @@ def render_mini_timeline(gps_ts: int, cam_ts: int) -> None:
     print(f"{C_B}Offset: {offset_sec:.3f} seconds{C_0}")
 
 
-def calculate_time_offset(timezone: str = "Europe/Berlin") -> None:
+def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") -> str:
     """
     Calculate time offset T_CAMERA - T_GPS in seconds.
-    Deletes offset.env before writing new value.
+    Deletes offset.env before writing new values.
+    Saves both numeric and formatted hh:mm:ss offset.
     """
+    import datetime
+    from zoneinfo import ZoneInfo
 
-    folder = Path.cwd()
-    offset_file = folder / "offset.env"
+    folder = path if path is not None else Path.cwd()
+    offset_file = folder / F_OFFSET
 
     # Step 1: Delete existing offset.env
     if offset_file.exists():
@@ -449,15 +494,15 @@ def calculate_time_offset(timezone: str = "Europe/Berlin") -> None:
             print(f"{C_E}Failed to delete {offset_file}: {e}{C_0}")
 
     # Step 2: Load camera and GPS timestamps
-    camera_path = folder / "TIMESTAMP_CAMERA.json"
-    gps_path = folder / "TIMESTAMP_GPS.json"
+    camera_path = folder / F_TIMESTAMP_CAMERA
+    gps_path = folder / F_TIMESTAMP_GPS
 
     camera_data = read_json(camera_path) if camera_path.exists() else {}
     gps_data = read_json(gps_path) if gps_path.exists() else {}
 
     if not camera_data:
         print(f"{C_E}Missing TIMESTAMP_CAMERA.json. Cannot compute offset.{C_0}")
-        offset = 0
+        offset_ms = 0
     else:
         if not gps_data:
             print(f"{C_E}Missing TIMESTAMP_GPS.json. Please enter GPS time manually.{C_0}")
@@ -480,20 +525,30 @@ def calculate_time_offset(timezone: str = "Europe/Berlin") -> None:
                 gps_data["datetime"] = dt_utc
             except Exception as e:
                 print(f"{C_E}Failed to parse GPS time: {e}{C_0}")
-                offset = 0
+                offset_ms = 0
         else:
             gps_ts = gps_data.get("timestamp", 0)
 
         cam_ts = camera_data.get("timestamp", 0)
-        offset = cam_ts - gps_ts
-        if camera_data and gps_data:
-            render_mini_timeline(gps_ts, cam_ts)
+        offset_ms = cam_ts - gps_ts
         print(f"{C_H}Camera Time: {C_P}{camera_data.get('original', 'N/A')}{C_0}")
         print(f"{C_H}GPS Time:    {C_P}{gps_data.get('original', 'N/A')}{C_0}")
-        print(f"{C_H}Offset (s): {C_B}{offset / 1000:.3f}{C_0}")
+        print(f"{C_H}Offset (s): {C_B}{offset_ms / 1000:.3f}{C_0}")
+        render_mini_timeline(gps_ts, cam_ts)
 
-    save_txt(offset_file, f"OFFSET={offset / 1000:.3f}")
-    print(f"{C_H}Saved offset to {C_P}{offset_file}{C_0}")
+    # Step 3: Format offset as hh:mm:ss
+    offset_sec = int(offset_ms / 1000)
+    sign = "-" if offset_sec < 0 else ""
+    abs_sec = abs(offset_sec)
+    hh = abs_sec // 3600
+    mm = (abs_sec % 3600) // 60
+    ss = abs_sec % 60
+    offset_str = f"{sign}{hh:02}:{mm:02}:{ss:02}"
+
+    # Step 4: Save to offset.env
+    save_txt(offset_file, [f"OFFSET_SECONDS={offset_sec}", f"OFFSET_HMS={offset_str}"])
+    print(f"{C_H}Saved offset [{offset_str}] to {C_P}{offset_file}{C_0}")
+    return offset_str
 
 
 def create_from_exiftool(input_folder: Path, output_root: Path) -> None:
