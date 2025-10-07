@@ -14,7 +14,30 @@ The implementation is modular with clear docstrings and type hints for maintaina
 
 PROMPT
 
-V1
+V3 - Input the time from GPS
+write a function receiving a time string to be expected as a colon separated string of time hh:mm:ss (each
+part can be a one or two digit number). another parameter is timezone with a default timezone of "Europe/Berlin".
+if the time string is not passed (None), then ask the user for an input of the time string.
+Calculate the corresponding datetime in the same output structure as extract_image_timestamp (without the filename attribute).
+Also save this dict as gps_timestamp.json to the folder.
+
+V2 - Get the timestamp of an image to be used as offset parameter
+add another function that extracts a timestamp in an image from exifdata using exiftool. In commandline
+the command is exiftool -SubSecDateTimeOriginal -b gps.jpg Output look like:
+"2025:08:31 16:34:46.22+02:00" Write a function that will use a filepath as input for the image file.
+If filepath is empty, check for fallback - In current path, check for a gps.jpg file. if present,
+use this - If not available, show all *.jpg files in the out output, and assign them a number
+(loop over all jpg file and use enumerate) in the output, for each file like [number] filename.jpg.
+Ask the user for the number and us the assigned image file to be used - return the retrieved timestamp
+in a dictionary with the following attrbutes - "original": the original timestamp string as extracted
+by exiftool - "utc": the time stamp string but converted to utc time (string has offset +00:00)
+- "timestamp" the timestamp in UTC time in miliseconds (13 digits) - "datetime": the
+corresponding datetime.datetime object for the datetime string - add a dedicated save_json
+function to store the json file receiving filename and data as dict. Also adjust datetime
+attribute fields to be able to be stored as json (not leading to errors) -
+save this dict as gps_offset.json in the path where the file is located
+
+V1 - update metadata.json for output folders
 add another function:  check the --output folder and all its first level children folders and apply
 the run_exiftool on each of those folders to update the metadata.json files there
 add another argparse argument -u --update to run this function from command line
@@ -121,19 +144,20 @@ import re
 import argparse
 import json
 from json import JSONDecodeError
+import datetime
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Union
 from dateutil import parser as date_parser
+from zoneinfo import ZoneInfo
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
+
 # Paths from environemt
-
-
 # Define image suffixes and default paths
 IMAGE_SUFFIXES = ["jpg", "jpeg", "raf", "dng"]
 CMD_EXIF = MY_CMD_EXIFTOOL
@@ -203,6 +227,142 @@ def read_json(filepath: Path) -> Union[Dict[str, Any], List[Any]]:
             return json.load(f)
     except (TypeError, JSONDecodeError) as _:
         print(f"{C_E}Couldn't read [{filepath}]")
+        return {}
+
+
+def save_json(filepath: Path, data: Dict[str, Any]) -> None:
+    """
+    Save a dictionary to JSON, converting datetime objects to ISO strings.
+
+    Args:
+        filepath (Path): Path to save the JSON file.
+        data (Dict[str, Any]): Data to save.
+    """
+
+    def default_serializer(obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        return str(obj)
+
+    with filepath.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, default=default_serializer)
+
+
+def create_timestamp_from_time_string(
+    time_str: Union[str, None], folder: Path, timezone: str = "Europe/Berlin"
+) -> Dict[str, Any]:
+    """
+    Convert a hh:mm:ss time string into a timezone-aware datetime and UTC timestamp.
+
+    Args:
+        time_str (Union[str, None]): Time string in format hh:mm:ss (1–2 digits per part).
+        folder (Path): Folder where gps_timestamp.json will be saved.
+        timezone (str): Timezone name (default: Europe/Berlin).
+
+    Returns:
+        Dict[str, Any]: Dictionary with keys:
+            - "original": original time string
+            - "utc": UTC datetime string
+            - "timestamp": UTC timestamp in milliseconds
+            - "datetime": datetime.datetime object
+    """
+
+    if time_str is None:
+        time_str = input(f"{C_Q}Enter time string (hh:mm:ss): {C_0}").strip()
+
+    try:
+        parts = [int(p) for p in time_str.split(":")]
+        while len(parts) < 3:
+            parts.append(0)  # pad missing seconds or minutes
+        hour, minute, second = parts[:3]
+
+        # Use today's date with provided time
+        local_zone = ZoneInfo(timezone)
+        today = datetime.date.today()
+        dt_local = datetime.datetime(today.year, today.month, today.day, hour, minute, second, tzinfo=local_zone)
+        dt_utc = dt_local.astimezone(datetime.timezone.utc)
+        utc_str = dt_utc.isoformat()
+        timestamp_ms = int(dt_utc.timestamp() * 1000)
+
+        result = {"original": time_str, "utc": utc_str, "timestamp": timestamp_ms, "datetime": dt_utc}
+
+        save_json(folder / "gps_timestamp.json", result)
+        print(f"{C_H}Saved timestamp to {C_P}{folder / 'timestamp_gps.json'}{C_0}")
+        return result
+
+    except Exception as e:
+        print(f"{C_E}Failed to parse time string: {e}{C_0}")
+        return {}
+
+
+def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
+    """
+    Extract SubSecDateTimeOriginal from an image using exiftool and return timestamp info.
+
+    Args:
+        filepath (Union[str, Path]): Path to the image file. If empty, fallback logic is applied.
+
+    Returns:
+        Dict[str, Any]: Dictionary with keys:
+            - "original": original timestamp string from EXIF
+            - "utc": UTC timestamp string
+            - "timestamp": UTC timestamp in milliseconds
+            - "datetime": datetime.datetime object
+            - "filename": absolute path to the image file
+    """
+    from dateutil import parser as date_parser
+    import subprocess
+
+    # Step 1: Resolve image path
+    if not filepath:
+        fallback_path = Path.cwd() / "gps.jpg"
+        if fallback_path.exists():
+            filepath = fallback_path
+        else:
+            jpg_files = list(Path.cwd().glob("*.jpg"))
+            if not jpg_files:
+                print(f"{C_E}No JPG files found in current directory.{C_0}")
+                return {}
+            print(f"{C_T}Select an image file to extract timestamp:{C_0}")
+            for idx, file in enumerate(jpg_files):
+                print(f"{C_I}[{idx}] {C_P}{file.name}{C_0}")
+            try:
+                choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
+                filepath = jpg_files[choice]
+            except (ValueError, IndexError):
+                print(f"{C_E}Invalid selection.{C_0}")
+                return {}
+
+    filepath = Path(filepath).resolve()
+    if not filepath.exists():
+        print(f"{C_E}File not found: {filepath}{C_0}")
+        return {}
+
+    # Step 2: Run exiftool
+    cmd = [CMD_EXIF, "-SubSecDateTimeOriginal", "-b", str(filepath)]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        original = result.stdout.strip().replace(":", "-", 2)  # Normalize for parsing
+        dt_obj = date_parser.parse(original)
+        dt_utc = dt_obj.astimezone(datetime.timezone.utc)
+        utc_str = dt_utc.isoformat()
+        timestamp_ms = int(dt_utc.timestamp() * 1000)
+
+        output = {
+            "original": original,
+            "utc": utc_str,
+            "timestamp": timestamp_ms,
+            "datetime": dt_utc,
+            "filename": str(filepath),
+        }
+
+        # Save to gps_offset.json
+        save_json(filepath.parent / "timestamp_camera.json", output)
+        print(f"{C_H}GPS timestamp saved to {C_P}{filepath.parent / 'gps_offset.json'}{C_0}")
+        return output
+
+    except subprocess.CalledProcessError as e:
+        print(f"{C_E}Exiftool failed: {e.stderr}{C_0}")
         return {}
 
 
