@@ -14,6 +14,9 @@ The implementation is modular with clear docstrings and type hints for maintaina
 
 PROMPT
 
+V5 - Additional Functions on getting the URL
+Not documented prompts. some parts were also copied over from tools repo
+
 V4 - Save Time Offset
 add a function to calculate the time offset T_CAMERA - T_GPS = T_OFFSET. It also receives a
 timezone with a default of Europe/Berlin - assume the current path as directory - read the json
@@ -162,10 +165,11 @@ import subprocess
 import traceback
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Tuple
 from dateutil import parser as date_parser
 from zoneinfo import ZoneInfo
 from configparser import ConfigParser
+from typing import Optional
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B
@@ -182,38 +186,139 @@ P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
 # T_CAMERA - T_GPS = T_OFFSET
 F_TIMESTAMP_GPS = "timestamp_gps.json"
 F_TIMESTAMP_CAMERA = "timestamp_camera.json"
-F_OFFSET = "offset.env"
+F_OFFSET_ENV = "offset.env"
+F_LAT_LON_ENV = "osm_lat_lon.env"
+F_GPX_ENV = "gpx.env"
 
 
-def read_internet_shortcut(f: str, showinfo=False):
-    """reads an Internet shortcut from filepath, returns the url or None
-    if nothing could be found"""
-    url = None
+def latlon_from_osm_url(url: str) -> Optional[Tuple[float, float]]:
+    """
+    Extracts latitude and longitude from an OpenStreetMap URL with 7-digit float precision.
+    https://www.openstreetmap.org/#map=xx/lat/lon
+    https://www.openstreetmap.org/search?query=qd#map=xx/lat/lon"
+
+    Args:
+        url (str): OpenStreetMap URL containing #map=zoom/lat/lon
+
+    Returns:
+        Optional[Tuple[float, float]]: (latitude, longitude) if found, else None
+    """
+    match = re.search(r"#map=\d+/([\-0-9.]+)/([\-0-9.]+)", url)
+    if match:
+        lat = round(float(match.group(1)), 7)
+        lon = round(float(match.group(2)), 7)
+        return lat, lon
+    return None
+
+
+def read_internet_shortcut(filepath: str) -> Optional[str]:
+    """Reads an Internet shortcut (.url) and returns the URL if found."""
     cp = ConfigParser(interpolation=None)
-
     try:
-        cp.read(str(f))
-    except Exception as ex:
-        print(f"--- EXCEPTION read_internet_shortcut:{ex} ---")
-        print(traceback.format_exc())
+        cp.read(filepath)
+        return cp.get("InternetShortcut", "URL", fallback=None)
+    except Exception:
         return None
 
-    sections = cp.sections()
 
-    for section in sections:
-        options = cp.options(section)
-        if showinfo:
-            print("Section:", section)
-            print("- Options:", options)
+def get_openstreetmap_coordinates_from_folder(folder: Optional[Path] = None) -> Optional[Tuple[float, float]]:
+    """
+    Reads all .url files in a folder, filters for OpenStreetMap links, and returns lat/lon coordinates.
+    If multiple links are found, prompts the user to select one.
+    Also writes the selected lat,lon to F_LAT_LON in the same folder.
 
-        for option in options:
-            v = cp.get(section, option)
-            if showinfo:
-                print(f" {option} : {v}")
-            if (section == "InternetShortcut") and (option == "url"):
-                url = v
+    Args:
+        folder (Optional[Path]): Folder to scan. Defaults to current directory.
 
-    return url
+    Returns:
+        Optional[Tuple[float, float]]: Selected coordinates or None if no match found.
+    """
+    folder = folder or Path.cwd()
+    if not folder.exists() or not folder.is_dir():
+        print(f"{C_E}Invalid folder: {folder}{C_0}")
+        return None
+
+    env_file = folder / F_LAT_LON_ENV
+    if env_file.exists():
+        try:
+            env_file.unlink()
+            print(f"{C_T}Deleted existing {env_file}{C_0}")
+        except Exception as e:
+            print(f"{C_E}Failed to delete {env_file}: {e}{C_0}")
+
+    url_files = list(folder.glob("*.url"))
+    matching = []
+
+    for f in url_files:
+        url = read_internet_shortcut(str(f))
+        if url and "openstreetmap.org" in url.lower():
+            coords = latlon_from_osm_url(url)
+            if coords:
+                matching.append((f.name, coords))
+
+    if not matching:
+        print(f"{C_E}No OpenStreetMap links with coordinates found in {folder}{C_0}")
+        return None
+
+    if len(matching) == 1:
+        selected = matching[0][1]
+        print(f"{C_T}Found one OpenStreetMap link: {C_P}{matching[0][0]}{C_0}")
+    else:
+        print(f"{C_T}Multiple OpenStreetMap links found:{C_0}")
+        for idx, (fname, coords) in enumerate(matching):
+            print(f"{C_I}[{idx}] {C_P}{fname}{C_T} → lat: {coords[0]:.7f}, lon: {coords[1]:.7f}{C_0}")
+        try:
+            choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
+            selected = matching[choice][1]
+        except (ValueError, IndexError):
+            print(f"{C_E}Invalid selection. No coordinates returned.{C_0}")
+            return None
+
+    lat_str = f"{selected[0]:.7f}"
+    lon_str = f"{selected[1]:.7f}"
+    try:
+        with env_file.open("w", encoding="utf-8") as f:
+            f.write(f"{lat_str},{lon_str}\n")
+        print(f"{C_H}Saved coordinates to {C_P}{env_file}{C_0}")
+    except Exception as e:
+        print(f"{C_E}Failed to write coordinates: {e}{C_0}")
+
+    return selected
+
+
+def collect_url_shortcuts(folder: Optional[Path] = None, filter_substring: Optional[str] = None) -> Dict[str, str]:
+    """
+    Reads all .url files in the given folder and returns a dictionary
+    mapping filenames to their extracted URLs using read_internet_shortcut.
+    Optionally filters URLs by a case-insensitive substring.
+
+    Args:
+        folder (Optional[Path]): Folder to scan. Defaults to current directory.
+        filter_substring (Optional[str]): Substring to filter URLs (case-insensitive).
+
+    Returns:
+        Dict[str, str]: Dictionary with filename (str) as key and URL (str) as value.
+    """
+    folder = folder or Path.cwd()
+    if not folder.exists() or not folder.is_dir():
+        print(f"{C_E}Invalid folder: {folder}{C_0}")
+        return {}
+
+    url_dict = {}
+    url_files = list(folder.glob("*.url"))
+    print(f"{C_T}Found {len(url_files)} .url files in {C_P}{folder}{C_0}")
+
+    for url_file in url_files:
+        url = read_internet_shortcut(str(url_file))
+        if url:
+            if filter_substring is None or filter_substring.lower() in url.lower():
+                url_dict[url_file.name] = url
+            else:
+                print(f"{C_E}Filtered out: {url_file.name} (URL does not match filter){C_0}")
+        else:
+            print(f"{C_E}No URL found in {url_file.name}{C_0}")
+
+    return url_dict
 
 
 def create_openstreetmap_shortcut(lat: float, lon: float) -> str:
@@ -483,7 +588,7 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
     from zoneinfo import ZoneInfo
 
     folder = path if path is not None else Path.cwd()
-    offset_file = folder / F_OFFSET
+    offset_file = folder / F_OFFSET_ENV
 
     # Step 1: Delete existing offset.env
     if offset_file.exists():
