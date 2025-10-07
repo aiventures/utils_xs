@@ -163,7 +163,11 @@ IMAGE_SUFFIXES = ["jpg", "jpeg", "raf", "dng"]
 CMD_EXIF = MY_CMD_EXIFTOOL
 P_PHOTO_DUMP_DEFAULT = Path(MY_P_PHOTO_DUMP)
 P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
-# CREATE THE BASE EXIFTOOL CMD
+
+# Timestamp files to calculate offset
+# T_CAMERA - T_GPS = T_OFFSET
+TIMESTAMP_GPS = "timestamp_gps.json"
+TIMESTAMP_CAMERA = "timestamp_camera.json"
 
 
 def get_base_exiftool_cmd(input_folder: Path) -> list:
@@ -286,8 +290,8 @@ def create_timestamp_from_time_string(
 
         result = {"original": time_str, "utc": utc_str, "timestamp": timestamp_ms, "datetime": dt_utc}
 
-        save_json(folder / "gps_timestamp.json", result)
-        print(f"{C_H}Saved timestamp to {C_P}{folder / 'timestamp_gps.json'}{C_0}")
+        save_json(folder / TIMESTAMP_GPS, result)
+        print(f"{C_H}Saved timestamp to {C_P}{folder / TIMESTAMP_GPS}{C_0}")
         return result
 
     except Exception as e:
@@ -338,7 +342,7 @@ def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
         print(f"{C_E}File not found: {filepath}{C_0}")
         return {}
 
-    # Step 2: Run exiftool
+    # Step 2: Run exiftool extracting Original DateTime Original
     cmd = [CMD_EXIF, "-SubSecDateTimeOriginal", "-b", str(filepath)]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -357,8 +361,8 @@ def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
         }
 
         # Save to gps_offset.json
-        save_json(filepath.parent / "timestamp_camera.json", output)
-        print(f"{C_H}GPS timestamp saved to {C_P}{filepath.parent / 'gps_offset.json'}{C_0}")
+        save_json(filepath.parent / TIMESTAMP_CAMERA, output)
+        print(f"{C_H}GPS timestamp saved to {C_P}{filepath.parent / TIMESTAMP_CAMERA}{C_0}")
         return output
 
     except subprocess.CalledProcessError as e:
