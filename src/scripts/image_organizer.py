@@ -14,6 +14,18 @@ The implementation is modular with clear docstrings and type hints for maintaina
 
 PROMPT
 
+V4 - Save Time Offset
+add a function to calculate the time offset T_CAMERA - T_GPS = T_OFFSET. It also receives a
+timezone with a default of Europe/Berlin - assume the current path as directory - read the json
+files TIMESTAMP_GPS and TIMESTAMP_CAMERA. Display the original timestamps and calculate the time_offset
+in seconds from "timestamp" field. - In case the TIMESTAMP_GPS file is missing, ask the user for input
+of the datetime in the form hh:mm:ss. Recalculate this string as timestamp for the given timezone and
+calculate the utc 13 digits timestamp and calculate the time_offset - if file TIMESTAMP_CAMERA or both
+TIMESTAMP_CAMERA and TIMESTAMP_GPS are missing, issue an error message and set the offset to 0. - Finally,
+save the offset in seconds into a file offset.env in the same path. - Modularize the save function into
+a save_txt function receiving file path and a parameter lines being either a list of strings or a string.
+If a string, convert it to a one element list. save the list using "\n".join(list...) into the text file
+
 V3 - Input the time from GPS
 write a function receiving a time string to be expected as a colon separated string of time hh:mm:ss (each
 part can be a one or two digit number). another parameter is timezone with a default timezone of "Europe/Berlin".
@@ -166,8 +178,8 @@ P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
 
 # Timestamp files to calculate offset
 # T_CAMERA - T_GPS = T_OFFSET
-TIMESTAMP_GPS = "timestamp_gps.json"
-TIMESTAMP_CAMERA = "timestamp_camera.json"
+F_TIMESTAMP_GPS = "timestamp_gps.json"
+F_TIMESTAMP_CAMERA = "timestamp_camera.json"
 
 
 def get_base_exiftool_cmd(input_folder: Path) -> list:
@@ -290,13 +302,32 @@ def create_timestamp_from_time_string(
 
         result = {"original": time_str, "utc": utc_str, "timestamp": timestamp_ms, "datetime": dt_utc}
 
-        save_json(folder / TIMESTAMP_GPS, result)
-        print(f"{C_H}Saved timestamp to {C_P}{folder / TIMESTAMP_GPS}{C_0}")
+        save_json(folder / F_TIMESTAMP_GPS, result)
+        print(f"{C_H}Saved timestamp to {C_P}{folder / F_TIMESTAMP_GPS}{C_0}")
         return result
 
     except Exception as e:
         print(f"{C_E}Failed to parse time string: {e}{C_0}")
         return {}
+
+
+def save_txt(filepath: Path, lines: Union[str, List[str]]) -> None:
+    """
+    Save a string or list of strings to a text file with exception handling.
+
+    Args:
+        filepath (Path): Path to save the file.
+        lines (Union[str, List[str]]): Content to write. If string, converted to list.
+    """
+    if isinstance(lines, str):
+        lines = [lines]
+
+    try:
+        with filepath.open("w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        print(f"{C_H}Saved text file: {C_P}{filepath}{C_0}")
+    except Exception as e:
+        print(f"{C_E}Failed to save file {filepath}: {e}{C_0}")
 
 
 def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
@@ -314,8 +345,6 @@ def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
             - "datetime": datetime.datetime object
             - "filename": absolute path to the image file
     """
-    from dateutil import parser as date_parser
-    import subprocess
 
     # Step 1: Resolve image path
     if not filepath:
@@ -361,13 +390,110 @@ def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
         }
 
         # Save to gps_offset.json
-        save_json(filepath.parent / TIMESTAMP_CAMERA, output)
-        print(f"{C_H}GPS timestamp saved to {C_P}{filepath.parent / TIMESTAMP_CAMERA}{C_0}")
+        save_json(filepath.parent / F_TIMESTAMP_CAMERA, output)
+        print(f"{C_H}GPS timestamp saved to {C_P}{filepath.parent / F_TIMESTAMP_CAMERA}{C_0}")
         return output
 
     except subprocess.CalledProcessError as e:
         print(f"{C_E}Exiftool failed: {e.stderr}{C_0}")
         return {}
+
+
+def render_mini_timeline(gps_ts: int, cam_ts: int) -> None:
+    """
+    Render a mini timeline showing GPS and Camera timestamps and their offset.
+
+    Args:
+        gps_ts (int): GPS timestamp in milliseconds.
+        cam_ts (int): Camera timestamp in milliseconds.
+    """
+    offset_sec = (cam_ts - gps_ts) / 1000
+    total_width = 40
+    midpoint = total_width // 2
+
+    # Normalize positions
+    if abs(offset_sec) > midpoint:
+        scale = abs(offset_sec) / midpoint
+        gps_pos = 0 if offset_sec > 0 else int(midpoint - offset_sec / scale)
+        cam_pos = int(midpoint + offset_sec / scale) if offset_sec > 0 else midpoint
+    else:
+        gps_pos = midpoint
+        cam_pos = int(midpoint + offset_sec)
+
+    # Build timeline
+    timeline = ["─"] * total_width
+    timeline[gps_pos] = "🟦"  # GPS
+    timeline[cam_pos] = "🟥"  # Camera
+
+    print(f"\n{C_T}Mini Timeline:{C_0}")
+    print(f"{C_PY}GPS 🟦{' ' * (gps_pos)}|{' ' * (cam_pos - gps_pos - 1)}🟥 Camera{C_0}")
+    print(f"{C_H}{''.join(timeline)}{C_0}")
+    print(f"{C_B}Offset: {offset_sec:.3f} seconds{C_0}")
+
+
+def calculate_time_offset(timezone: str = "Europe/Berlin") -> None:
+    """
+    Calculate time offset T_CAMERA - T_GPS in seconds.
+    Deletes offset.env before writing new value.
+    """
+
+    folder = Path.cwd()
+    offset_file = folder / "offset.env"
+
+    # Step 1: Delete existing offset.env
+    if offset_file.exists():
+        try:
+            offset_file.unlink()
+            print(f"{C_PY}Deleted existing {offset_file}{C_0}")
+        except Exception as e:
+            print(f"{C_E}Failed to delete {offset_file}: {e}{C_0}")
+
+    # Step 2: Load camera and GPS timestamps
+    camera_path = folder / "TIMESTAMP_CAMERA.json"
+    gps_path = folder / "TIMESTAMP_GPS.json"
+
+    camera_data = read_json(camera_path) if camera_path.exists() else {}
+    gps_data = read_json(gps_path) if gps_path.exists() else {}
+
+    if not camera_data:
+        print(f"{C_E}Missing TIMESTAMP_CAMERA.json. Cannot compute offset.{C_0}")
+        offset = 0
+    else:
+        if not gps_data:
+            print(f"{C_E}Missing TIMESTAMP_GPS.json. Please enter GPS time manually.{C_0}")
+            time_str = input(f"{C_Q}Enter GPS time (hh:mm:ss): {C_0}").strip()
+            try:
+                parts = [int(p) for p in time_str.split(":")]
+                while len(parts) < 3:
+                    parts.append(0)
+                hour, minute, second = parts[:3]
+                local_zone = ZoneInfo(timezone)
+                today = datetime.date.today()
+                dt_local = datetime.datetime(
+                    today.year, today.month, today.day, hour, minute, second, tzinfo=local_zone
+                )
+                dt_utc = dt_local.astimezone(datetime.timezone.utc)
+                gps_ts = int(dt_utc.timestamp() * 1000)
+                gps_data["timestamp"] = gps_ts
+                gps_data["original"] = time_str
+                gps_data["utc"] = dt_utc.isoformat()
+                gps_data["datetime"] = dt_utc
+            except Exception as e:
+                print(f"{C_E}Failed to parse GPS time: {e}{C_0}")
+                offset = 0
+        else:
+            gps_ts = gps_data.get("timestamp", 0)
+
+        cam_ts = camera_data.get("timestamp", 0)
+        offset = cam_ts - gps_ts
+        if camera_data and gps_data:
+            render_mini_timeline(gps_ts, cam_ts)
+        print(f"{C_H}Camera Time: {C_P}{camera_data.get('original', 'N/A')}{C_0}")
+        print(f"{C_H}GPS Time:    {C_P}{gps_data.get('original', 'N/A')}{C_0}")
+        print(f"{C_H}Offset (s): {C_B}{offset / 1000:.3f}{C_0}")
+
+    save_txt(offset_file, f"OFFSET={offset / 1000:.3f}")
+    print(f"{C_H}Saved offset to {C_P}{offset_file}{C_0}")
 
 
 def create_from_exiftool(input_folder: Path, output_root: Path) -> None:
