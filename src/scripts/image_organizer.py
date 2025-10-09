@@ -176,7 +176,7 @@ from dateutil import parser as date_parser
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
-from libs.helper import Persistence, GeoLocation
+from libs.helper import Persistence, GeoLocation, CmdRunner
 
 # Paths from environemt
 # Define image suffixes and default paths
@@ -436,21 +436,27 @@ def create_from_exiftool(input_folder: Path, output_root: Path) -> None:
     output_path = input_folder / "metadata.json"
     cmd = get_base_exiftool_cmd(input_folder)
 
-    print(f"\n{C_T}### Running exiftool for metadata extraction in {C_P}{input_folder}{C_T}...{C_0}")
+    success = CmdRunner.run_cmd_and_stream(cmd, output_path)
+    if success:
+        print(f"{C_H}Metadata successfully saved to {C_P}{output_path}{C_0}")
+    else:
+        print(f"{C_E}Exiftool failed for {input_folder}{C_0}")
 
-    with output_path.open("w", encoding="utf-8") as outfile:
-        process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
+    # print(f"\n{C_T}### Running exiftool for metadata extraction in {C_P}{input_folder}{C_T}...{C_0}")
 
-        # Stream exiftool progress to console
-        for line in process.stderr:
-            print(f"{C_PY}{line.strip()}{C_0}")
+    # with output_path.open("w", encoding="utf-8") as outfile:
+    #     process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
 
-        process.wait()
+    #     # Stream exiftool progress to console
+    #     for line in process.stderr:
+    #         print(f"{C_PY}{line.strip()}{C_0}")
 
-        if process.returncode != 0:
-            print(f"{C_E}Exiftool failed for {input_folder}{C_0}")
-        else:
-            print(f"{C_H}Metadata successfully saved to {C_P}{output_path}{C_0}")
+    #     process.wait()
+
+    #     if process.returncode != 0:
+    #         print(f"{C_E}Exiftool failed for {input_folder}{C_0}")
+    #     else:
+    #         print(f"{C_H}Metadata successfully saved to {C_P}{output_path}{C_0}")
 
 
 def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
@@ -511,13 +517,15 @@ def update_metadata_in_all_subfolders(output_root: Path) -> None:
 
         print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
         cmd = get_base_exiftool_cmd(folder)
-        with metadata_path.open("w", encoding="utf-8") as outfile:
-            process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
-            for line in process.stderr:
-                print(f"{C_PY}{line.strip()}{C_0}")
-            process.wait()
 
-        status = "✅ Success" if process.returncode == 0 else "❌ Failed"
+        success = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
+        status = "✅ Success" if success else "❌ Failed"
+        # with metadata_path.open("w", encoding="utf-8") as outfile:
+        #     process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
+        #     for line in process.stderr:
+        #         print(f"{C_PY}{line.strip()}{C_0}")
+        #     process.wait()
+        # status = "✅ Success" if process.returncode == 0 else "❌ Failed"
         summary.append({"folder": folder.name, "file_count": file_count, "status": status})
 
     print(f"\n{C_T}### Metadata Update Summary:{C_0}")
@@ -669,17 +677,18 @@ def summarize_and_update_metadata(output_root: Path, date_list: List[str]) -> Li
 
             cmd = get_base_exiftool_cmd(folder_path)
 
-            with metadata_path.open("w", encoding="utf-8") as outfile:
-                process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
+            success = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
+            if not success:
+                print(f"{C_E}Exiftool failed in folder {folder_path}{C_0}")
 
-                # Stream stderr (exiftool progress and messages) to the console in real time
-                for line in process.stderr:
-                    print(f"{C_PY}{line.strip()}{C_0}")
-
-                process.wait()
-
-                if process.returncode != 0:
-                    print(f"{C_E}Exiftool failed in folder {folder_path}{C_0}")
+            # with metadata_path.open("w", encoding="utf-8") as outfile:
+            #     process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
+            #     # Stream stderr (exiftool progress and messages) to the console in real time
+            #     for line in process.stderr:
+            #         print(f"{C_PY}{line.strip()}{C_0}")
+            #     process.wait()
+            #     if process.returncode != 0:
+            #         print(f"{C_E}Exiftool failed in folder {folder_path}{C_0}")
 
             summary.append({"date": date_str, "file_count": file_count})
 

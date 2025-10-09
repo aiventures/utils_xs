@@ -28,6 +28,33 @@ logger = logging.getLogger(__name__)
 BOM = "\ufeff"
 
 
+class CmdRunner:
+    """Running Commands"""
+
+    @staticmethod
+    def run_cmd_and_stream(cmd: List[str], output_path: Path) -> bool:
+        """
+        Run exiftool with the given command and stream stderr to console.
+
+        Args:
+            cmd (List[str]): The exiftool command to execute.
+            output_path (Path): Path to write stdout output (typically metadata.json).
+
+        Returns:
+            bool: True if the command succeeded, False otherwise.
+        """
+        try:
+            with output_path.open("w", encoding="utf-8") as outfile:
+                process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
+                for line in process.stderr:
+                    print(f"{C_PY}{line.strip()}{C_0}")
+                process.wait()
+            return process.returncode == 0
+        except Exception as e:
+            print(f"{C_E}Failed to run exiftool: {e}{C_0}")
+            return False
+
+
 class GeoLocation:
     """Helper for Geolocation"""
 
