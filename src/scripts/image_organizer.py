@@ -155,25 +155,28 @@ Also add to the program
 
 """
 
+import sys
 import re
 import argparse
-import json
+
+# import json
 from json import JSONDecodeError
 import datetime
 import shutil
 import subprocess
-import traceback
-import sys
+
+# import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Union, Tuple
-from dateutil import parser as date_parser
+from typing import Any, Dict, List, Union, Tuple, Optional
 from zoneinfo import ZoneInfo
-from configparser import ConfigParser
-from typing import Optional
+
+# from configparser import ConfigParser
+from dateutil import parser as date_parser
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
+from libs.helper import Persistence, GeoLocation
 
 # Paths from environemt
 # Define image suffixes and default paths
@@ -189,196 +192,6 @@ F_TIMESTAMP_CAMERA = "timestamp_camera.json"
 F_OFFSET_ENV = "offset.env"
 F_LAT_LON_ENV = "osm_lat_lon.env"
 F_GPX_ENV = "gpx.env"
-
-
-def latlon_from_osm_url(url: str) -> Optional[Tuple[float, float]]:
-    """
-    Extracts latitude and longitude from an OpenStreetMap URL with 7-digit float precision.
-    https://www.openstreetmap.org/#map=xx/lat/lon
-    https://www.openstreetmap.org/search?query=qd#map=xx/lat/lon"
-
-    Args:
-        url (str): OpenStreetMap URL containing #map=zoom/lat/lon
-
-    Returns:
-        Optional[Tuple[float, float]]: (latitude, longitude) if found, else None
-    """
-    match = re.search(r"#map=\d+/([\-0-9.]+)/([\-0-9.]+)", url)
-    if match:
-        lat = round(float(match.group(1)), 7)
-        lon = round(float(match.group(2)), 7)
-        return lat, lon
-    return None
-
-
-def read_internet_shortcut(filepath: str) -> Optional[str]:
-    """Reads an Internet shortcut (.url) and returns the URL if found."""
-    cp = ConfigParser(interpolation=None)
-    try:
-        cp.read(filepath)
-        return cp.get("InternetShortcut", "URL", fallback=None)
-    except Exception:
-        return None
-
-
-def get_openstreetmap_coordinates_from_folder(folder: Optional[Path] = None) -> Optional[Tuple[float, float]]:
-    """
-    Reads all .url files in a folder, filters for OpenStreetMap links, and returns lat/lon coordinates.
-    If multiple links are found, prompts the user to select one.
-    Also writes the selected lat,lon to F_LAT_LON in the same folder.
-
-    Args:
-        folder (Optional[Path]): Folder to scan. Defaults to current directory.
-
-    Returns:
-        Optional[Tuple[float, float]]: Selected coordinates or None if no match found.
-    """
-    folder = folder or Path.cwd()
-    if not folder.exists() or not folder.is_dir():
-        print(f"{C_E}Invalid folder: {folder}{C_0}")
-        return None
-
-    env_file = folder / F_LAT_LON_ENV
-    if env_file.exists():
-        try:
-            env_file.unlink()
-            print(f"{C_T}Deleted existing {env_file}{C_0}")
-        except Exception as e:
-            print(f"{C_E}Failed to delete {env_file}: {e}{C_0}")
-
-    url_files = list(folder.glob("*.url"))
-    matching = []
-
-    for f in url_files:
-        url = read_internet_shortcut(str(f))
-        if url and "openstreetmap.org" in url.lower():
-            coords = latlon_from_osm_url(url)
-            if coords:
-                matching.append((f.name, coords))
-
-    if not matching:
-        print(f"{C_E}No OpenStreetMap links with coordinates found in {folder}{C_0}")
-        return None
-
-    if len(matching) == 1:
-        selected = matching[0][1]
-        print(f"{C_T}Found one OpenStreetMap link: {C_P}{matching[0][0]}{C_0}")
-    else:
-        print(f"{C_T}Multiple OpenStreetMap links found:{C_0}")
-        for idx, (fname, coords) in enumerate(matching):
-            print(f"{C_I}[{idx}] {C_P}{fname}{C_T} → lat: {coords[0]:.7f}, lon: {coords[1]:.7f}{C_0}")
-        try:
-            choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
-            selected = matching[choice][1]
-        except (ValueError, IndexError):
-            print(f"{C_E}Invalid selection. No coordinates returned.{C_0}")
-            return None
-
-    lat_str = f"{selected[0]:.7f}"
-    lon_str = f"{selected[1]:.7f}"
-    try:
-        with env_file.open("w", encoding="utf-8") as f:
-            f.write(f"{lat_str},{lon_str}\n")
-        print(f"{C_H}Saved coordinates to {C_P}{env_file}{C_0}")
-    except Exception as e:
-        print(f"{C_E}Failed to write coordinates: {e}{C_0}")
-
-    return selected
-
-
-def collect_url_shortcuts(folder: Optional[Path] = None, filter_substring: Optional[str] = None) -> Dict[str, str]:
-    """
-    Reads all .url files in the given folder and returns a dictionary
-    mapping filenames to their extracted URLs using read_internet_shortcut.
-    Optionally filters URLs by a case-insensitive substring.
-
-    Args:
-        folder (Optional[Path]): Folder to scan. Defaults to current directory.
-        filter_substring (Optional[str]): Substring to filter URLs (case-insensitive).
-
-    Returns:
-        Dict[str, str]: Dictionary with filename (str) as key and URL (str) as value.
-    """
-    folder = folder or Path.cwd()
-    if not folder.exists() or not folder.is_dir():
-        print(f"{C_E}Invalid folder: {folder}{C_0}")
-        return {}
-
-    url_dict = {}
-    url_files = list(folder.glob("*.url"))
-    print(f"{C_T}Found {len(url_files)} .url files in {C_P}{folder}{C_0}")
-
-    for url_file in url_files:
-        url = read_internet_shortcut(str(url_file))
-        if url:
-            if filter_substring is None or filter_substring.lower() in url.lower():
-                url_dict[url_file.name] = url
-            else:
-                print(f"{C_E}Filtered out: {url_file.name} (URL does not match filter){C_0}")
-        else:
-            print(f"{C_E}No URL found in {url_file.name}{C_0}")
-
-    return url_dict
-
-
-def create_openstreetmap_shortcut(lat: float, lon: float) -> str:
-    """Shorcut Link"""
-    shortcut_lines = ["[InternetShortcut]", f"URL=https://www.openstreetmap.org/#map={lat:.7f}/{lon:.5f}"]
-    shortcut = "\n".join(shortcut_lines)
-    return shortcut
-
-
-def get_gpx_file_from_folder(folder: Optional[Path] = None) -> Optional[str]:
-    """
-    Scans a folder for .gpx files and writes the selected filename to F_GPX_ENV.
-    Deletes any existing F_GPX_ENV file before writing.
-
-    Args:
-        folder (Optional[Path]): Folder to scan. Defaults to current directory.
-
-    Returns:
-        Optional[str]: Selected GPX filename or None if no file was selected.
-    """
-    folder = folder or Path.cwd()
-    if not folder.exists() or not folder.is_dir():
-        print(f"{C_E}Invalid folder: {folder}{C_0}")
-        return None
-
-    env_file = folder / F_GPX_ENV
-    if env_file.exists():
-        try:
-            env_file.unlink()
-            print(f"{C_T}Deleted existing {env_file}{C_0}")
-        except Exception as e:
-            print(f"{C_E}Failed to delete {env_file}: {e}{C_0}")
-
-    gpx_files = list(folder.glob("*.gpx"))
-    if not gpx_files:
-        print(f"{C_E}No GPX files found in {folder}{C_0}")
-        return None
-
-    if len(gpx_files) == 1:
-        selected = gpx_files[0].name
-        try:
-            env_file.write_text(selected + "\n", encoding="utf-8")
-            print(f"{C_H}Saved GPX filename [{selected}] to {C_P}{env_file}{C_0}")
-        except Exception as e:
-            print(f"{C_E}Failed to write GPX filename: {e}{C_0}")
-        return selected
-
-    print(f"{C_T}Multiple GPX files found:{C_0}")
-    for idx, f in enumerate(gpx_files):
-        print(f"{C_I}[{idx}] {C_P}{f.name}{C_0}")
-
-    try:
-        choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
-        selected = gpx_files[choice].name
-        env_file.write_text(selected + "\n", encoding="utf-8")
-        print(f"{C_H}Saved GPX filename [{selected}] to {C_P}{env_file}{C_0}")
-        return selected
-    except (ValueError, IndexError):
-        print(f"{C_E}Invalid selection. No GPX file saved.{C_0}")
-        return
 
 
 def get_base_exiftool_cmd(input_folder: Path) -> list:
@@ -426,108 +239,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Update metadata.json in output folder and all its first-level subfolders",
     )
     return parser
-
-
-def read_json(filepath: Path) -> Union[Dict[str, Any], List[Any]]:
-    """
-    Read a JSON file from a given filepath and return its content.
-
-    Args:
-        filepath (Path): Path to the JSON file to read.
-
-    Returns:
-        Union[Dict[str, Any], List[Any]]: Parsed JSON data as a dictionary or list.
-    """
-    try:
-        with filepath.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    except (TypeError, JSONDecodeError) as _:
-        print(f"{C_E}Couldn't read [{filepath}]")
-        return {}
-
-
-def save_json(filepath: Path, data: Dict[str, Any]) -> None:
-    """
-    Save a dictionary to JSON, converting datetime objects to ISO strings.
-
-    Args:
-        filepath (Path): Path to save the JSON file.
-        data (Dict[str, Any]): Data to save.
-    """
-
-    def default_serializer(obj):
-        if isinstance(obj, datetime.datetime):
-            return obj.isoformat()
-        return str(obj)
-
-    with filepath.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, default=default_serializer)
-
-
-def create_timestamp_from_time_string(
-    time_str: Union[str, None], folder: Path, timezone: str = "Europe/Berlin"
-) -> Dict[str, Any]:
-    """
-    Convert a hh:mm:ss time string into a timezone-aware datetime and UTC timestamp.
-
-    Args:
-        time_str (Union[str, None]): Time string in format hh:mm:ss (1–2 digits per part).
-        folder (Path): Folder where gps_timestamp.json will be saved.
-        timezone (str): Timezone name (default: Europe/Berlin).
-
-    Returns:
-        Dict[str, Any]: Dictionary with keys:
-            - "original": original time string
-            - "utc": UTC datetime string
-            - "timestamp": UTC timestamp in milliseconds
-            - "datetime": datetime.datetime object
-    """
-
-    if time_str is None:
-        time_str = input(f"{C_Q}Enter time string (hh:mm:ss): {C_0}").strip()
-
-    try:
-        parts = [int(p) for p in time_str.split(":")]
-        while len(parts) < 3:
-            parts.append(0)  # pad missing seconds or minutes
-        hour, minute, second = parts[:3]
-
-        # Use today's date with provided time
-        local_zone = ZoneInfo(timezone)
-        today = datetime.date.today()
-        dt_local = datetime.datetime(today.year, today.month, today.day, hour, minute, second, tzinfo=local_zone)
-        dt_utc = dt_local.astimezone(datetime.timezone.utc)
-        utc_str = dt_utc.isoformat()
-        timestamp_ms = int(dt_utc.timestamp() * 1000)
-
-        result = {"original": time_str, "utc": utc_str, "timestamp": timestamp_ms, "datetime": dt_utc}
-
-        save_json(folder / F_TIMESTAMP_GPS, result)
-        print(f"{C_H}Saved timestamp to {C_P}{folder / F_TIMESTAMP_GPS}{C_0}")
-        return result
-
-    except Exception as e:
-        print(f"{C_E}Failed to parse time string: {e}{C_0}")
-        return {}
-
-
-def save_txt(filepath: Path, lines: Union[str, List[str]]) -> None:
-    """
-    Save a string or list of strings to a text file with exception handling.
-
-    Args:
-        filepath (Path): Path to save the file.
-        lines (Union[str, List[str]]): Content to write. If string, converted to list.
-    """
-    if isinstance(lines, str):
-        lines = [lines]
-
-    try:
-        with filepath.open("w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
-        print(f"{C_H}Saved text file: {C_P}{filepath}{C_0}")
-    except Exception as e:
-        print(f"{C_E}Failed to save file {filepath}: {e}{C_0}")
 
 
 def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
@@ -590,7 +301,7 @@ def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
         }
 
         # Save to gps_offset.json
-        save_json(filepath.parent / F_TIMESTAMP_CAMERA, output)
+        Persistence.save_json(filepath.parent / F_TIMESTAMP_CAMERA, output)
         print(f"{C_H}GPS timestamp saved to {C_P}{filepath.parent / F_TIMESTAMP_CAMERA}{C_0}")
         return output
 
@@ -637,8 +348,6 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
     Deletes offset.env before writing new values.
     Saves both numeric and formatted hh:mm:ss offset.
     """
-    import datetime
-    from zoneinfo import ZoneInfo
 
     folder = path if path is not None else Path.cwd()
     offset_file = folder / F_OFFSET_ENV
@@ -655,11 +364,11 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
     camera_path = folder / F_TIMESTAMP_CAMERA
     gps_path = folder / F_TIMESTAMP_GPS
 
-    camera_data = read_json(camera_path) if camera_path.exists() else {}
-    gps_data = read_json(gps_path) if gps_path.exists() else {}
+    camera_data = Persistence.read_json(camera_path) if camera_path.exists() else {}
+    gps_data = Persistence.read_json(gps_path) if gps_path.exists() else {}
 
     if not camera_data:
-        print(f"{C_E}Missing TIMESTAMP_CAMERA.json. Cannot compute offset.{C_0}")
+        print(f"{C_E}Missing TIMESTAMP_CAMERA.json. Offset will be set to zero.{C_0}")
         offset_ms = 0
     else:
         if not gps_data:
@@ -704,7 +413,7 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
     offset_str = f"{sign}{hh:02}:{mm:02}:{ss:02}"
 
     # Step 4: Save to offset.env
-    save_txt(offset_file, [f"OFFSET_SECONDS={offset_sec}", f"OFFSET_HMS={offset_str}"])
+    Persistence.save_txt(offset_file, [f"OFFSET_SECONDS={offset_sec}", f"OFFSET_HMS={offset_str}"])
     print(f"{C_H}Saved offset [{offset_str}] to {C_P}{offset_file}{C_0}")
     return offset_str
 
@@ -758,7 +467,7 @@ def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
         Dict[str, dict]: Dictionary mapping 4-digit keys to metadata with keys:
                          'key', 'filename', 'datetime_created' (datetime object), and 'date' string.
     """
-    raw_data = read_json(metadata_path)
+    raw_data = Persistence.read_json(metadata_path)
     output_dict = {}
     if len(raw_data) == 0:
         return {}
@@ -835,13 +544,13 @@ def save_processed_dict(output_dict: Dict[str, dict], save_path: Path) -> None:
         out_val["datetime_created"] = v["datetime_created"].isoformat()
         output_serializable[k] = out_val
 
-    with save_path.open("w", encoding="utf-8") as f:
-        json.dump(output_serializable, f, indent=2)
+    Persistence.save_json(save_path, output_serializable)
 
 
 def extract_number_key(filename: str) -> Union[str, None]:
     """
-    Extract the last four digits of the last numerical sequence found in a filename.
+    Extract the last four digits of the last numerical sequence found in a filename
+    (usual patterrn for image files)
 
     Args:
         filename (str): The filename string to search.
