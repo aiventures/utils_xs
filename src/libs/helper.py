@@ -6,8 +6,9 @@ import re
 
 import argparse
 import json
-
 from json import JSONDecodeError
+
+
 import datetime
 import shutil
 import subprocess
@@ -17,9 +18,10 @@ from typing import Any, Dict, List, Union, Tuple, Optional
 from zoneinfo import ZoneInfo
 from configparser import ConfigParser
 from dateutil import parser as date_parser
+from bs4 import BeautifulSoup
 
 # ANSI color codes
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
 
 logger = logging.getLogger(__name__)
@@ -56,7 +58,156 @@ class CmdRunner:
 
 
 class GeoLocation:
-    """Helper for Geolocation"""
+    """Helper for Geolocation Handling."""
+
+    @staticmethod
+    def merge_gpx(folder: Union[str, Path], f_output: Union[str, Path]) -> Union[str, None]:
+        """
+        Merge multiple GPX files in a folder into a single GPX file.
+
+        - Uses metadata from the file with the earliest <metadata><time>
+        - Collects all <trkpt> segments and sorts them by <time>
+        - Saves the merged GPX to f_output
+
+        Args:
+            folder (Union[str, Path]): Folder containing GPX files.
+            f_output (Union[str, Path]): Output file path or filename.
+
+        PROMPT
+
+        in the GeoLocation class, add a static function merge_gpx, that will do the following:
+        * Use the following sample as spec for the GPX geo tracking file
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx creator="Garmin Connect" version="1.1"
+        xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/11.xsd"
+        xmlns:ns3="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+        xmlns="http://www.topografix.com/GPX/1/1"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ns2="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
+        <metadata>
+            <link href="connect.garmin.com">
+            <text>Garmin Connect</text>
+            </link>
+            <time>2025-08-31T13:30:57.000Z</time>
+        </metadata>
+        <trk>
+            <name>Radfahren</name>
+            <type>cycling</type>
+            <trkseg>
+            <trkpt lat="49.13321242667734622955322265625" lon="8.7750278413295745849609375">
+                <ele>171.8000030517578125</ele>
+                <time>2025-08-31T13:31:10.000Z</time>
+                <extensions>
+                <ns3:TrackPointExtension>
+                    <ns3:hr>129</ns3:hr>
+                </ns3:TrackPointExtension>
+                </extensions>
+            </trkpt>
+            <trkpt lat="49.13316900841891765594482421875" lon="8.7750531546771526336669921875">
+                <ele>171.8000030517578125</ele>
+                <time>2025-08-31T13:31:11.000Z</time>
+                <extensions>
+                <ns3:TrackPointExtension>
+                    <ns3:hr>129</ns3:hr>
+                </ns3:TrackPointExtension>
+                </extensions>
+            </trkpt>
+            </trkseg>
+        </trk>
+        </gpx>
+        Now create the following function to create amerged gpx file
+        * get a path location as input and a parameter f_output as save filepath for a new gpx file
+        * collect all files with the GPX extension in that path
+        * Use beautiful soup to parse the gpx files according to given specification
+        * copy the metadata part from the file that has the earliest <metadata><time> timestamp
+        * from all collected files, extract all <trkpt> segments, sort them ascending by <time>, and add all of them in the <trk><trkseg> section
+        * save this new merged data as f_output (if f_output is not an absolute path, save it in the current path)
+        """
+        folder = Path(folder).resolve()
+        f_output = Path(f_output)
+        if not f_output.is_absolute():
+            f_output = Path.cwd() / f_output
+
+        # skip if merged path already exists, you need to manually delete it again if not present
+        if f_output.is_file():
+            print(f"{C_T}File {C_F}[{f_output}]{C_T} already exists {C_0}")
+            return
+
+        gpx_files = sorted(folder.glob("*.gpx"))
+        if not gpx_files:
+            print(f"{C_E}No GPX files found in  {C_H}{folder}{C_0}")
+            return
+
+        metadata_time_map = {}
+        trkpt_elements = []
+
+        for gpx_file in gpx_files:
+            with gpx_file.open("r", encoding="utf-8") as f:
+                soup = BeautifulSoup(f, "xml")
+
+            metadata = soup.find("metadata")
+            time_tag = metadata.find("time") if metadata else None
+            time_val = datetime.datetime.max
+            if time_tag:
+                try:
+                    time_val = datetime.datetime.fromisoformat(time_tag.text.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+            metadata_time_map[gpx_file] = (time_val, metadata)
+
+            trkpts = soup.find_all("trkpt")
+            trkpt_elements.extend(trkpts)
+
+        # Sort trkpts by <time>
+        def trkpt_time(trkpt):
+            time_tag = trkpt.find("time")
+            try:
+                return datetime.datetime.fromisoformat(time_tag.text.replace("Z", "+00:00"))
+            except Exception:
+                return datetime.datetime.max
+
+        trkpt_elements.sort(key=trkpt_time)
+
+        # Create new GPX structure
+        soup_out = BeautifulSoup(features="xml")
+        gpx_tag = soup_out.new_tag(
+            "gpx",
+            creator="Garmin Connect",
+            version="1.1",
+            xmlns="http://www.topografix.com/GPX/1/1",
+            xmlns_ns3="http://www.garmin.com/xmlschemas/TrackPointExtension/v1",
+            xmlns_xsi="http://www.w3.org/2001/XMLSchema-instance",
+            xmlns_ns2="http://www.garmin.com/xmlschemas/GpxExtensions/v3",
+            xsi_schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/11.xsd",
+        )
+        soup_out.append(gpx_tag)
+
+        # Add earliest metadata
+        earliest_file = min(metadata_time_map.items(), key=lambda x: x[1][0])[0]
+        metadata_tag = metadata_time_map[earliest_file][1]
+        if metadata_tag:
+            gpx_tag.append(metadata_tag)
+
+        # Add track and track segment
+        trk_tag = soup_out.new_tag("trk")
+        name_tag = soup_out.new_tag("name")
+        name_tag.string = "Merged GPX Track"
+        type_tag = soup_out.new_tag("type")
+        type_tag.string = "cycling"
+        trk_tag.append(name_tag)
+        trk_tag.append(type_tag)
+
+        trkseg_tag = soup_out.new_tag("trkseg")
+        for trkpt in trkpt_elements:
+            trkseg_tag.append(trkpt)
+        trk_tag.append(trkseg_tag)
+        gpx_tag.append(trk_tag)
+
+        # Save to file
+        with f_output.open("w", encoding="utf-8") as f:
+            f.write(str(soup_out))
+
+        print(f"{C_T}Merged GPX saved to {C_H}{f_output}{C_0}")
+        return str(f_output)
 
     @staticmethod
     def latlon_from_osm_url(url: str) -> Optional[Tuple[float, float]]:
@@ -210,25 +361,31 @@ class Persistence:
     """persistence class"""
 
     @staticmethod
-    def read_txt_file(filepath, encoding="utf-8", comment_marker="#", skip_blank_lines=True):
+    def read_txt_file(filepath, encoding="utf-8", comment_marker="#", skip_blank_lines=True) -> list:
         """reads data as lines from file"""
+        _filepath = Path(filepath)
+
+        if not _filepath.is_file():
+            print(f"{C_E} {_filepath} is not a valid file{C_0}")
+            return []
+
         lines = []
         bom_check = False
         try:
-            with open(filepath, encoding=encoding, errors="backslashreplace") as fp:
+            with open(str(_filepath), encoding=encoding, errors="backslashreplace") as fp:
                 for line in fp:
                     if not bom_check:
                         bom_check = True
                         if line[0] == BOM:
                             line = line[1:]
-                            logger.warning(f"Line contains BOM Flag, file is special UTF-8 format with BOM")
+                            logger.warning("Line contains BOM Flag, file is special UTF-8 format with BOM")
                     if len(line.strip()) == 0 and skip_blank_lines:
                         continue
                     if line[0] == comment_marker:
                         continue
                     lines.append(line.strip())
         except:
-            logger.error(f"Exception reading file {filepath}", exc_info=True)
+            logger.error(f"Exception reading file {str(_filepath)}", exc_info=True)
         return lines
 
     @staticmethod
@@ -372,7 +529,7 @@ class Transformer:
     @staticmethod
     def create_timestamp_from_time_string(
         time_str: Union[str, None], filename: str | None, folder: Path | None, timezone: str = "Europe/Berlin"
-    ) -> Dict[str, Any]:
+    ) -> Union[Dict[str, Any], None]:
         """
         Convert a hh:mm:ss time string into a timezone-aware datetime and UTC timestamp.
 
@@ -414,7 +571,7 @@ class Transformer:
 
         except Exception as e:
             print(f"{C_E}Failed to parse time string: {e}{C_0}")
-            return {}
+            return None
 
 
 if __name__ == "__main__":

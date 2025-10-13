@@ -176,7 +176,7 @@ from dateutil import parser as date_parser
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
-from libs.helper import Persistence, GeoLocation, CmdRunner
+from libs.helper import Persistence, GeoLocation, CmdRunner, Transformer
 
 # Paths from environemt
 # Define image suffixes and default paths
@@ -190,12 +190,13 @@ P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
 F_TIMESTAMP_GPS = "timestamp_gps.json"
 F_TIMESTAMP_CAMERA = "timestamp_camera.json"
 F_OFFSET_ENV = "offset.env"
-F_LAT_LON_ENV = "osm_lat_lon.env"
-F_GPX_ENV = "gpx.env"
+F_OSM_LAT_LON_ENV = "osm_lat_lon.env"
+F_GPX_ENV = "gpx_merged.env"
+F_GPX_MERGED = "gpx_merged.gpx"
 
 
-def get_base_exiftool_cmd(input_folder: Path) -> list:
-    """creates the base exiftool command to export image data"""
+def get_exiftool_cmd_export_meta(input_folder: Path) -> list:
+    """creates the exiftool command to export image data as json"""
     suffix_args = []
     for ext in IMAGE_SUFFIXES:
         suffix_args.extend(["-ext", ext])
@@ -205,6 +206,60 @@ def get_base_exiftool_cmd(input_folder: Path) -> list:
     # the c command is to format gps coordinates as decimals
     exif_cmd = [CMD_EXIF, "-r", "-g", "-c", "'%.6f'", "-progress50"] + suffix_args + ["-json", str(input_folder)]
     return exif_cmd
+
+
+def get_exiftool_create_gps_metadata_from_gpx(input_folder: Path) -> Union[list, None]:
+    """creates the exiftool command to create gpx data in image files"""
+
+    # use current path or input path
+    p_work = input_folder if input_folder.is_dir() else Path().resolve()
+    f_gpx_merged = p_work.joinpath(F_GPX_MERGED)
+
+    f_gpx_merged = f_gpx_merged if f_gpx_merged.is_file() else None
+    if f_gpx_merged is None:
+        print(f"{C_H}No gpx file {f_gpx_merged} found, skip processing of creating gps based on gpx{C_0}")
+        return
+
+    # For each file with the suffixes given in exiftool -geosync=+00:00:00 -geotag track.gpx *.*
+    suffix_args = []
+    for ext in IMAGE_SUFFIXES:
+        suffix_args.extend(["-ext", ext])
+
+    # get the geosync offset (previously written), with a default of 00:00:00
+    f_offset = p_work.joinpath(F_OFFSET_ENV)
+    lines = Persistence.read_txt_file(f_offset)
+    t_offset = "+00:00:00" if len(lines) == 0 else lines[0]
+    geosync = f"-geosync={t_offset}"
+
+    # command to export all exifdata in groups as json for given suffixes
+    # progress is shown every 50 images
+    # the c command is to format gps coordinates as decimals
+    exif_cmd = [CMD_EXIF, geosync, "-geotag", f_gpx_merged, "-progress50"] + suffix_args + ["-json", str(input_folder)]
+    return exif_cmd
+
+
+def prepare_collateral_files(input_folder: Path) -> None:
+    """Prepare collateral files centrally.
+    - Delete Collateral Files first
+    - Merge GPX Files if there are any => F_GPX_ENV
+    - Read Calibration Image  => F_TIMESTAMP_CAMERA
+    - Read / Input GPS Time from Image => F_TIMESTAMP_GPS
+    - Calculate Time Offset: F_TIMESTAMP_CAMERA / F_TIMESTAMP_GPS => F_OFFSET_ENV
+    - Extract lat lon default from OSM links => F_LAT_LON_ENV
+    """
+
+    # remove work files, keep any created merged gps trackss
+    f_env_files = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OSM_LAT_LON_ENV]
+
+    # use current path or input path
+    p_work = input_folder if input_folder.is_dir() else Path().resolve()
+    # 0. Delete any temporary files
+    _ = [p_work.joinpath(f).unlink(missing_ok=True) for f in f_env_files]
+    # 1. Create Merged GPS
+    f_merged_gpx = GeoLocation.merge_gpx(p_work, F_GPX_ENV)
+    # 2. Create Offset File 
+    
+    # 3. 
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -344,13 +399,15 @@ def render_mini_timeline(gps_ts: int, cam_ts: int) -> None:
 
 def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") -> str:
     """
-    Calculate time offset T_CAMERA - T_GPS in seconds.
+    Calculate time offset T_OFFSET = T_CAMERA - T_GPS in seconds.
     Deletes offset.env before writing new values.
     Saves both numeric and formatted hh:mm:ss offset.
     """
 
     folder = path if path is not None else Path.cwd()
     offset_file = folder / F_OFFSET_ENV
+    gps_ts = 0
+    offset_ms = 0
 
     # Step 1: Delete existing offset.env
     if offset_file.exists():
@@ -361,19 +418,22 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
             print(f"{C_E}Failed to delete {offset_file}: {e}{C_0}")
 
     # Step 2: Load camera and GPS timestamps
-    camera_path = folder / F_TIMESTAMP_CAMERA
-    gps_path = folder / F_TIMESTAMP_GPS
+    f_timestamp_camera = folder / F_TIMESTAMP_CAMERA
+    f_timestamp_gps = folder / F_TIMESTAMP_GPS
 
-    camera_data = Persistence.read_json(camera_path) if camera_path.exists() else {}
-    gps_data = Persistence.read_json(gps_path) if gps_path.exists() else {}
+    camera_data = Persistence.read_json(f_timestamp_camera) if f_timestamp_camera.exists() else {}
+    gps_data = Persistence.read_json(f_timestamp_gps) if f_timestamp_gps.exists() else {}
 
     if not camera_data:
         print(f"{C_E}Missing TIMESTAMP_CAMERA.json. Offset will be set to zero.{C_0}")
         offset_ms = 0
     else:
         if not gps_data:
-            print(f"{C_E}Missing TIMESTAMP_GPS.json. Please enter GPS time manually.{C_0}")
-            time_str = input(f"{C_Q}Enter GPS time (hh:mm:ss): {C_0}").strip()
+            print(f"{C_E}No {F_TIMESTAMP_GPS}. Please enter GPS time manually.{C_0}")
+            # timestamp_dict = Transformer.create_timestamp_from_time_string()
+
+            time_str = input(f"{C_Q}Enter GPS time (hh:mm:ss) or skip: {C_0}").strip()
+
             try:
                 parts = [int(p) for p in time_str.split(":")]
                 while len(parts) < 3:
@@ -391,8 +451,7 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
                 gps_data["utc"] = dt_utc.isoformat()
                 gps_data["datetime"] = dt_utc
             except Exception as e:
-                print(f"{C_E}Failed to parse GPS time: {e}{C_0}")
-                offset_ms = 0
+                print(f"{C_E}No valid input, setting offset to 0{e}{C_0}")
         else:
             gps_ts = gps_data.get("timestamp", 0)
 
@@ -434,7 +493,7 @@ def create_from_exiftool(input_folder: Path, output_root: Path) -> None:
     """
 
     output_path = input_folder / "metadata.json"
-    cmd = get_base_exiftool_cmd(input_folder)
+    cmd = get_exiftool_cmd_export_meta(input_folder)
 
     success = CmdRunner.run_cmd_and_stream(cmd, output_path)
     if success:
@@ -457,6 +516,52 @@ def create_from_exiftool(input_folder: Path, output_root: Path) -> None:
     #         print(f"{C_E}Exiftool failed for {input_folder}{C_0}")
     #     else:
     #         print(f"{C_H}Metadata successfully saved to {C_P}{output_path}{C_0}")
+
+
+def get_unprocessed_files(folder: Union[str, Path], f_out: Optional[Union[str, Path]] = None) -> Dict[str, List[str]]:
+    """
+    Identify image files in the folder that lack corresponding backup files.
+
+    For each file with a suffix in IMAGE_SUFFIXES, check if a backup file
+    with the same name and suffix "<suffix>_original" exists. If not, add
+    the full path to the output dictionary under "files_unprocessed".
+
+    Args:
+        folder (Union[str, Path]): Path to the folder to scan.
+        f_out (Optional[Union[str, Path]]): Optional path or filename to save the output dictionary.
+
+    Returns:
+        Dict[str, List[str]]: Dictionary with key "files_unprocessed" and list of unmatched file paths.
+
+    PROMPT
+    Now add a function get_unprocessed_files that does the following:
+    - For a given path it reads all files with the given suffix <suffix> defined in IMAGE_SUFFIXES
+    - Check if for such a file a backup file having the same name and the suffix <suffix>_original exists
+    - if it doesn't exist, add the full path of this file to an output dict under the attribute "files_unprocessed"
+    - as output return this dictionary
+    - Add an input param f_out to the function: if it's None, do nothing. if it is a string or path, save this dictionary under
+    the path given by f_out. if it's just a name and not an absolute path, then use the current directory as save path
+
+    """
+    folder = Path(folder).resolve()
+    output_dict = {"files_unprocessed": []}
+
+    for suffix in IMAGE_SUFFIXES:
+        pattern = f"*.{suffix}"
+        for file_path in folder.glob(pattern):
+            backup_name = file_path.stem + f".{suffix}_original"
+            backup_path = folder / backup_name
+            if not backup_path.exists():
+                output_dict["files_unprocessed"].append(str(file_path))
+
+    # Save output if f_out is provided
+    if f_out:
+        f_out_path = Path(f_out)
+        if not f_out_path.is_absolute():
+            f_out_path = Path.cwd() / f_out_path
+        Persistence.save_json(f_out_path, output_dict)
+
+    return output_dict
 
 
 def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
@@ -516,7 +621,7 @@ def update_metadata_in_all_subfolders(output_root: Path) -> None:
         file_count = len(files)
 
         print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
-        cmd = get_base_exiftool_cmd(folder)
+        cmd = get_exiftool_cmd_export_meta(folder)
 
         success = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
         status = "✅ Success" if success else "❌ Failed"
@@ -675,7 +780,7 @@ def summarize_and_update_metadata(output_root: Path, date_list: List[str]) -> Li
             print(f"\n{C_T}### Writing Metadata: {C_P}{folder_path}{C_T} ---")
             print(f"Found {C_I}{file_count}{C_T} files. Running exiftool...{C_0}")
 
-            cmd = get_base_exiftool_cmd(folder_path)
+            cmd = get_exiftool_cmd_export_meta(folder_path)
 
             success = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
             if not success:
