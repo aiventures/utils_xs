@@ -14,6 +14,14 @@ The implementation is modular with clear docstrings and type hints for maintaina
 
 PROMPT
 
+V6
+
+rewrite calculate_time_offset, so that it also will write the gps_data dict to a
+file using the Persistence.save_txt function. also refactor the generation of the output
+dict in extract_image_timestamp and calculate_time_offset into a separate method
+
+... more iterations ...
+
 V5 - Additional Functions on getting the URL
 Not documented prompts. some parts were also copied over from tools repo
 
@@ -195,6 +203,40 @@ F_GPX_ENV = "gpx_merged.env"
 F_GPX_MERGED = "gpx_merged.gpx"
 
 
+def generate_timestamp_dict(source: Union[str, datetime.datetime], filepath: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    Generate a standardized timestamp dictionary from a string or datetime object.
+
+    Args:
+        source (Union[str, datetime.datetime]): Raw timestamp string or datetime object.
+        filepath (Optional[Path]): Optional path to include in output.
+
+    Returns:
+        Dict[str, Any]: Dictionary with keys: original, utc, timestamp, datetime, [filename]
+    """
+    if isinstance(source, str):
+        normalized = source.replace(":", "-", 2)
+        dt_obj = date_parser.parse(normalized)
+        original = source
+    else:
+        dt_obj = source
+        original = dt_obj.isoformat()
+
+    dt_utc = dt_obj.astimezone(datetime.timezone.utc)
+    utc_str = dt_utc.isoformat()
+    timestamp_ms = int(dt_utc.timestamp() * 1000)
+
+    output = {
+        "original": original,
+        "utc": utc_str,
+        "timestamp": timestamp_ms,
+        "datetime": dt_utc,
+    }
+    if filepath:
+        output["filename"] = str(filepath)
+    return output
+
+
 def get_exiftool_cmd_export_meta(input_folder: Path) -> list:
     """creates the exiftool command to export image data as json"""
     suffix_args = []
@@ -257,9 +299,9 @@ def prepare_collateral_files(input_folder: Path) -> None:
     _ = [p_work.joinpath(f).unlink(missing_ok=True) for f in f_env_files]
     # 1. Create Merged GPS
     f_merged_gpx = GeoLocation.merge_gpx(p_work, F_GPX_ENV)
-    # 2. Create Offset File 
-    
-    # 3. 
+    # 2. Create Offset File
+
+    # 3.
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -341,19 +383,8 @@ def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
     cmd = [CMD_EXIF, "-SubSecDateTimeOriginal", "-b", str(filepath)]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        original = result.stdout.strip().replace(":", "-", 2)  # Normalize for parsing
-        dt_obj = date_parser.parse(original)
-        dt_utc = dt_obj.astimezone(datetime.timezone.utc)
-        utc_str = dt_utc.isoformat()
-        timestamp_ms = int(dt_utc.timestamp() * 1000)
-
-        output = {
-            "original": original,
-            "utc": utc_str,
-            "timestamp": timestamp_ms,
-            "datetime": dt_utc,
-            "filename": str(filepath),
-        }
+        original = result.stdout.strip()
+        output = generate_timestamp_dict(original, filepath)
 
         # Save to gps_offset.json
         Persistence.save_json(filepath.parent / F_TIMESTAMP_CAMERA, output)
@@ -399,17 +430,31 @@ def render_mini_timeline(gps_ts: int, cam_ts: int) -> None:
 
 def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") -> str:
     """
-    Calculate time offset T_OFFSET = T_CAMERA - T_GPS in seconds.
-    Deletes offset.env before writing new values.
-    Saves both numeric and formatted hh:mm:ss offset.
+    Calculate the time offset between camera and GPS timestamps and save results.
+    T_OFFSET = T_CAMERA - T_GPS
+    This function computes the time offset in seconds between the camera timestamp
+    (from `timestamp_camera.json`) and the GPS timestamp (from `timestamp_gps.json`):
+
+    If the GPS timestamp is missing, the user is prompted to enter a time string
+    (hh:mm:ss), which is converted to a UTC timestamp using the provided timezone.
+
+    The function saves:
+    - `offset.env`: containing OFFSET_SECONDS and OFFSET_HMS (hh:mm:ss format)
+    - `gps_data.env`: containing the parsed GPS timestamp fields
+
+    Args:
+        path (Path, optional): Directory containing timestamp files. Defaults to current directory.
+        timezone (str, optional): Timezone for interpreting manual GPS input. Defaults to "Europe/Berlin".
+
+    Returns:
+        str: The formatted offset string in hh:mm:ss format.
+
     """
-
-    folder = path if path is not None else Path.cwd()
+    folder = path if path else Path.cwd()
     offset_file = folder / F_OFFSET_ENV
-    gps_ts = 0
-    offset_ms = 0
+    gps_txt_file = folder / "gps_data.env"
 
-    # Step 1: Delete existing offset.env
+    # Step 1: Remove existing offset file
     if offset_file.exists():
         try:
             offset_file.unlink()
@@ -417,23 +462,20 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
         except Exception as e:
             print(f"{C_E}Failed to delete {offset_file}: {e}{C_0}")
 
-    # Step 2: Load camera and GPS timestamps
-    f_timestamp_camera = folder / F_TIMESTAMP_CAMERA
-    f_timestamp_gps = folder / F_TIMESTAMP_GPS
+    # Step 2: Load timestamp data
+    camera_path = folder / F_TIMESTAMP_CAMERA
+    gps_path = folder / F_TIMESTAMP_GPS
+    camera_data = Persistence.read_json(camera_path) if camera_path.exists() else {}
+    gps_data = Persistence.read_json(gps_path) if gps_path.exists() else {}
 
-    camera_data = Persistence.read_json(f_timestamp_camera) if f_timestamp_camera.exists() else {}
-    gps_data = Persistence.read_json(f_timestamp_gps) if f_timestamp_gps.exists() else {}
-
+    # Step 3: Handle missing data
     if not camera_data:
         print(f"{C_E}Missing TIMESTAMP_CAMERA.json. Offset will be set to zero.{C_0}")
         offset_ms = 0
     else:
         if not gps_data:
-            print(f"{C_E}No {F_TIMESTAMP_GPS}. Please enter GPS time manually.{C_0}")
-            # timestamp_dict = Transformer.create_timestamp_from_time_string()
-
-            time_str = input(f"{C_Q}Enter GPS time (hh:mm:ss) or skip: {C_0}").strip()
-
+            print(f"{C_E}Missing TIMESTAMP_GPS.json. Please enter GPS time manually.{C_0}")
+            time_str = input(f"{C_Q}Enter GPS time (hh:mm:ss): {C_0}").strip()
             try:
                 parts = [int(p) for p in time_str.split(":")]
                 while len(parts) < 3:
@@ -444,25 +486,22 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
                 dt_local = datetime.datetime(
                     today.year, today.month, today.day, hour, minute, second, tzinfo=local_zone
                 )
-                dt_utc = dt_local.astimezone(datetime.timezone.utc)
-                gps_ts = int(dt_utc.timestamp() * 1000)
-                gps_data["timestamp"] = gps_ts
-                gps_data["original"] = time_str
-                gps_data["utc"] = dt_utc.isoformat()
-                gps_data["datetime"] = dt_utc
+                gps_data = generate_timestamp_dict(dt_local)
+                gps_data["original"] = time_str  # preserve user input
             except Exception as e:
-                print(f"{C_E}No valid input, setting offset to 0{e}{C_0}")
-        else:
-            gps_ts = gps_data.get("timestamp", 0)
+                print(f"{C_E}Failed to parse GPS time: {e}{C_0}")
+                offset_ms = 0
 
+        gps_ts = gps_data.get("timestamp", 0)
         cam_ts = camera_data.get("timestamp", 0)
         offset_ms = cam_ts - gps_ts
+
         print(f"{C_H}Camera Time: {C_P}{camera_data.get('original', 'N/A')}{C_0}")
-        print(f"{C_H}GPS Time:    {C_P}{gps_data.get('original', 'N/A')}{C_0}")
+        print(f"{C_H}GPS Time: {C_P}{gps_data.get('original', 'N/A')}{C_0}")
         print(f"{C_H}Offset (s): {C_B}{offset_ms / 1000:.3f}{C_0}")
         render_mini_timeline(gps_ts, cam_ts)
 
-    # Step 3: Format offset as hh:mm:ss
+    # Step 4: Format offset
     offset_sec = int(offset_ms / 1000)
     sign = "-" if offset_sec < 0 else ""
     abs_sec = abs(offset_sec)
@@ -471,9 +510,11 @@ def calculate_time_offset(path: Path = None, timezone: str = "Europe/Berlin") ->
     ss = abs_sec % 60
     offset_str = f"{sign}{hh:02}:{mm:02}:{ss:02}"
 
-    # Step 4: Save to offset.env
+    # Step 5: Save results
     Persistence.save_txt(offset_file, [f"OFFSET_SECONDS={offset_sec}", f"OFFSET_HMS={offset_str}"])
+    Persistence.save_txt(gps_txt_file, [f"{k.upper()}={v}" for k, v in gps_data.items() if isinstance(v, (str, int))])
     print(f"{C_H}Saved offset [{offset_str}] to {C_P}{offset_file}{C_0}")
+    print(f"{C_H}Saved GPS data to {C_P}{gps_txt_file}{C_0}")
     return offset_str
 
 
