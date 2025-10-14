@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from configparser import ConfigParser
 from dateutil import parser as date_parser
 from bs4 import BeautifulSoup
+from datetime import datetime
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F
@@ -28,6 +29,56 @@ logger = logging.getLogger(__name__)
 
 # byte order mark for some utf8 file types
 BOM = "\ufeff"
+
+
+class Helper:
+    @staticmethod
+    def get_datetime_from_format_string(
+        dt_str: str, timezone="Europe/Berlin", time_format="%Y:%m:%d %H:%M:%S"
+    ) -> datetime:
+        """converts into datetime"""
+
+        # Parse the string into a naive datetime object
+        dt_naive = datetime.strptime(dt_str, time_format)
+
+        # Attach a time zone (e.g., Europe/Berlin)
+        dt_local = dt_naive.replace(tzinfo=ZoneInfo(timezone))
+        return dt_local
+
+    @staticmethod
+    def get_dst_offset_string(
+        timezone: str, dt: datetime = None, dt_str: str = None, time_format="%Y:%m:%d %H:%M:%S"
+    ) -> str:
+        """
+        Returns the UTC offset string for the given timezone, accounting for DST.
+
+        Parameters:
+        - tz_name: str — IANA timezone name (e.g., 'Europe/Berlin', 'America/New_York')
+        - dt: datetime — Optional datetime object. Defaults to now.
+
+        Returns:
+        - str — Offset string in format ±HH:MM
+
+        Example:
+        - get_dst_offset_string("Europe/Berlin"))  # Might return "+02:00" during DST
+        """
+        if dt is None:
+            if dt_str is None:
+                dt = datetime.now()
+            else:
+                dt = Helper.get_datetime_from_format_string(dt_str, timezone, time_format)
+
+        tz = ZoneInfo(timezone)
+        localized_dt = dt.astimezone(tz)
+        offset = localized_dt.utcoffset()
+
+        if offset is None:
+            return "+00:00"  # Fallback for unknown offset
+
+        total_minutes = int(offset.total_seconds() // 60)
+        hours, minutes = divmod(abs(total_minutes), 60)
+        sign = "+" if total_minutes >= 0 else "-"
+        return f"{sign}{hours:02d}:{minutes:02d}"
 
 
 class CmdRunner:
@@ -56,12 +107,45 @@ class CmdRunner:
             print(f"{C_E}Failed to run exiftool: {e}{C_0}")
             return False
 
+    @staticmethod
+    def run_cmd_and_print(cmd: List[str]) -> bool:
+        """
+        Run a command and print both stdout and stderr to the console in real time.
+
+        Args:
+            cmd (List[str]): The command to execute.
+
+        Returns:
+            bool: True if the command succeeded, False otherwise.
+        """
+        try:
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            # Stream both stdout and stderr
+            while True:
+                stdout_line = process.stdout.readline()
+                stderr_line = process.stderr.readline()
+
+                if stdout_line:
+                    print(f"{C_PY}{stdout_line.strip()}{C_0}")
+                if stderr_line:
+                    print(f"{C_E}{stderr_line.strip()}{C_0}")
+
+                if not stdout_line and not stderr_line and process.poll() is not None:
+                    break
+
+            return process.returncode == 0
+
+        except Exception as e:
+            print(f"{C_E}Failed to run command: {e}{C_0}")
+            return False
+
 
 class GeoLocation:
     """Helper for Geolocation Handling."""
 
     @staticmethod
-    def merge_gpx(folder: Union[str, Path], f_output: Union[str, Path]) -> Union[str, None]:
+    def merge_gpx(p_source: Union[str, Path], f_output: Union[str, Path]) -> Union[str, None]:
         """
         Merge multiple GPX files in a folder into a single GPX file.
 
@@ -122,20 +206,20 @@ class GeoLocation:
         * from all collected files, extract all <trkpt> segments, sort them ascending by <time>, and add all of them in the <trk><trkseg> section
         * save this new merged data as f_output (if f_output is not an absolute path, save it in the current path)
         """
-        folder = Path(folder).resolve()
+        p_source = Path(p_source).resolve()
         f_output = Path(f_output)
         if not f_output.is_absolute():
-            f_output = Path.cwd() / f_output
+            f_output = p_source / f_output
 
         # skip if merged path already exists, you need to manually delete it again if not present
         if f_output.is_file():
             print(f"{C_T}File {C_F}[{f_output}]{C_T} already exists {C_0}")
             return
 
-        gpx_files = sorted(folder.glob("*.gpx"))
+        gpx_files = sorted(p_source.glob("*.gpx"))
         if not gpx_files:
-            print(f"{C_E}No GPX files found in  {C_H}{folder}{C_0}")
-            return
+            print(f"{C_E}No GPX files found in {C_F}{p_source}{C_0}")
+            return None
 
         metadata_time_map = {}
         trkpt_elements = []
@@ -203,8 +287,9 @@ class GeoLocation:
         gpx_tag.append(trk_tag)
 
         # Save to file
-        with f_output.open("w", encoding="utf-8") as f:
-            f.write(str(soup_out))
+        Persistence.save_txt(f_output, str(soup_out))
+        # with f_output.open("w", encoding="utf-8") as f:
+        #     f.write(str(soup_out))
 
         print(f"{C_T}Merged GPX saved to {C_H}{f_output}{C_0}")
         return str(f_output)
@@ -416,11 +501,13 @@ class Persistence:
             lines (Union[str, List[str]]): Content to write. If string, converted to list.
         """
         if isinstance(lines, str):
-            lines = [lines]
+            out = lines
+        else:
+            out = "\n".join(lines)
 
         try:
             with filepath.open("w", encoding="utf-8") as f:
-                f.write("\n".join(lines))
+                f.write(out)
             print(f"{C_H}Saved text file: {C_P}{filepath}{C_0}")
         except Exception as e:
             print(f"{C_E}Failed to save file {filepath}: {e}{C_0}")

@@ -137,11 +137,11 @@ rem set colors for certain echos
 rem title
 set C_T=%COL_BLUE_SKY%
 rem search keys
-set C_S=%COL_BLUE_PALE_153%
+set C_S=%COL_CYAN_PURE_50%
 rem search hits
 set C_SH=%COL_RED_STRAWBERRY_204%
 rem file keys
-set C_F=%COL_BLUE_SKY%
+set C_F=%COL_ORANGE_214%
 rem highlighted output 
 set C_H=%COL_WHITE_CREAM_230%
 rem index number
@@ -152,6 +152,10 @@ rem question / prompt
 set C_Q=%COL_PINK_LILAC_177%
 rem program 
 set C_PROG=%COL_PINK%
+rem INFO or LOG
+set C_L=%C_BLU%
+rem WARNING
+set C_W=%C_YLL%
 rem ERROR
 set C_E=%COL_RED%
 
