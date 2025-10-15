@@ -10,6 +10,7 @@ from json import JSONDecodeError
 
 
 import datetime
+from datetime import timedelta
 import shutil
 import subprocess
 import traceback
@@ -32,9 +33,23 @@ BOM = "\ufeff"
 
 
 class Helper:
+    """Some Helper Functions"""
+
+    @staticmethod
+    def format_seconds_offset(offset_s: int) -> str:
+        """Format offset as (+/-)HH:MM.SS String"""
+        sign = "+" if offset_s >= 0 else "-"
+        abs_seconds = abs(offset_s)
+        hours, remainder = divmod(abs_seconds, 3600)
+        minutes, offset_s = divmod(remainder, 60)
+        return f"{sign}{hours:02}:{minutes:02}:{offset_s:02}"
+
     @staticmethod
     def get_datetime_from_format_string(
-        dt_str: str, timezone="Europe/Berlin", time_format="%Y:%m:%d %H:%M:%S"
+        dt_str: str,
+        timezone="Europe/Berlin",
+        time_format="%Y:%m:%d %H:%M:%S",
+        offset_sec: int = 0,
     ) -> datetime:
         """converts into datetime"""
 
@@ -43,12 +58,17 @@ class Helper:
 
         # Attach a time zone (e.g., Europe/Berlin)
         dt_local = dt_naive.replace(tzinfo=ZoneInfo(timezone))
+        dt_local += timedelta(seconds=offset_sec)
         return dt_local
 
     @staticmethod
-    def get_dst_offset_string(
-        timezone: str, dt: datetime = None, dt_str: str = None, time_format="%Y:%m:%d %H:%M:%S"
-    ) -> str:
+    def get_utc_offset(
+        dt_in: datetime | str = None,
+        timezone: str = "Europe/Berlin",
+        time_format: str = "%Y:%m:%d %H:%M:%S",
+        offset_sec: int = 0,
+        as_string: bool = True,
+    ) -> str | int:
         """
         Returns the UTC offset string for the given timezone, accounting for DST.
 
@@ -62,23 +82,26 @@ class Helper:
         Example:
         - get_dst_offset_string("Europe/Berlin"))  # Might return "+02:00" during DST
         """
-        if dt is None:
-            if dt_str is None:
-                dt = datetime.now()
-            else:
-                dt = Helper.get_datetime_from_format_string(dt_str, timezone, time_format)
+        dt = datetime.now()
+        if isinstance(dt_in, str):
+            dt = Helper.get_datetime_from_format_string(dt_in, timezone, time_format, offset_sec)
+        elif isinstance(dt_in, datetime):
+            dt = dt_in
 
         tz = ZoneInfo(timezone)
         localized_dt = dt.astimezone(tz)
         offset = localized_dt.utcoffset()
 
+        # fallback
         if offset is None:
-            return "+00:00"  # Fallback for unknown offset
+            offset = "+00:00" if as_string is True else 0
+            return offset
+        offset_out = int(offset.total_seconds())
 
-        total_minutes = int(offset.total_seconds() // 60)
-        hours, minutes = divmod(abs(total_minutes), 60)
-        sign = "+" if total_minutes >= 0 else "-"
-        return f"{sign}{hours:02d}:{minutes:02d}"
+        if as_string:
+            offset_out = Helper.format_seconds_offset(offset_out)
+
+        return offset_out
 
 
 class CmdRunner:
@@ -669,3 +692,7 @@ if __name__ == "__main__":
         stream=sys.stdout,
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    t = "2025:11:30 12:00:00"
+    # UTC + OFFSET
+    offset = Helper.get_utc_offset(t)
+    print(offset)

@@ -185,7 +185,7 @@ from dateutil import parser as date_parser
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
-from libs.helper import Persistence, GeoLocation, CmdRunner, Transformer
+from libs.helper import Persistence, GeoLocation, CmdRunner, Transformer, Helper
 
 # Paths from environemt
 # Define image suffixes and default paths
@@ -221,6 +221,11 @@ CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-progress50", "-json"] + SUFFIX_ARGS
 # exiftool -api geolocation "-geolocation*" -lang de -json <file/path>
 CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-api", "geolocation", "-lang", "de", "-progress50", "-json"] + SUFFIX_ARGS
 
+#
+# https://exiftool.org/Shift.html
+# https://exiftool.org/#shift
+# exiftool "-AllDates+=0:0:0 0:0:42" -overwrite_original yourfile.jpg
+
 # Write the Reverse GeoInfo from GPS Coordinates into a file
 # exiftool "-geolocate=5.6429,5.9374" test.jpg
 
@@ -231,7 +236,6 @@ CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-api", "geolocation", "-lang", "de", "-pro
 # adjust for UTC -1 or 2
 # OFFSET needs to be either +1 or +2 (utc_time + offset = local time) depending on daylight saving day
 # exiftool -GPSLatitude*=48.00 -GPSLongitude*=9.00 -GPSAltitude=100 "-gpsdatestamp<${datetimeoriginal}+01:00" "-gpstimestamp<${datetimeoriginal}+01:00"  empty0.jpg
-
 # MAybe also add Date Time Created From DateToimeCreated
 
 
@@ -279,10 +283,11 @@ F_TIMESTAMP_IMG_DEFAULT = "gps.jpg"
 F_TIMESTAMP_GPS = "timestamp_gps.json"
 F_TIMESTAMP_CAMERA = "timestamp_camera.json"
 F_OFFSET_ENV = "offset.env"
+F_OFFSET_SECS_ENV = "offset_sec.env"
 F_OSM_LAT_LON_ENV = "osm_lat_lon.env"
 F_GPX_ENV = "gpx_merged.env"
 F_GPX_MERGED = "gpx_merged.gpx"
-F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OSM_LAT_LON_ENV]
+F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_LAT_LON_ENV]
 
 
 def generate_timestamp_dict(source: Union[str, datetime.datetime], filepath: Optional[Path] = None) -> Dict[str, Any]:
@@ -568,6 +573,7 @@ def calculate_time_offset(p_source: Path = None, timezone: str = "Europe/Berlin"
     """
     folder = p_source if p_source else Path.cwd()
     offset_file = folder / F_OFFSET_ENV
+    offset_file_sec = folder / F_OFFSET_SECS_ENV
     gps_json_file = folder / F_TIMESTAMP_GPS
     camera_json_file = folder / F_TIMESTAMP_CAMERA
 
@@ -614,30 +620,24 @@ def calculate_time_offset(p_source: Path = None, timezone: str = "Europe/Berlin"
 
         gps_ts = gps_data.get("timestamp", 0)
         cam_ts = camera_data.get("timestamp", 0)
-        offset_ms = cam_ts - gps_ts
+        offset_sec = int((cam_ts - gps_ts) / 1000)
+        offset_str = Helper.format_seconds_offset(offset_sec)
 
         print(f"{C_H}Camera Time: {C_P}{camera_data.get('original', 'N/A')}{C_0}")
         print(f"{C_H}GPS Time: {C_P}{gps_data.get('original', 'N/A')}{C_0}")
-        print(f"{C_H}Offset (s): {C_B}{offset_ms / 1000:.3f}{C_0}")
+        print(f"{C_H}Offset (s): {C_B}{offset_sec}sec / {offset_str}{C_0}")
         render_mini_timeline(gps_ts, cam_ts)
-
-    # Step 3: Format offset
-    offset_sec = int(offset_ms / 1000)
-    sign = "-" if offset_sec < 0 else ""
-    abs_sec = abs(offset_sec)
-    hh = abs_sec // 3600
-    mm = (abs_sec % 3600) // 60
-    ss = abs_sec % 60
-    offset_str = f"{sign}{hh:02}:{mm:02}:{ss:02}"
 
     # Step 4: Save all outputs
     Persistence.save_json(camera_json_file, camera_data)
     Persistence.save_json(gps_json_file, gps_data)
-    Persistence.save_txt(offset_file, [f"OFFSET_SECONDS={offset_sec}", f"OFFSET_HMS={offset_str}"])
+    Persistence.save_txt(offset_file, offset_str)
+    Persistence.save_txt(offset_file_sec, str(offset_sec))
 
     print(f"{C_H}Saved camera timestamp to {C_P}{camera_json_file}{C_0}")
     print(f"{C_H}Saved GPS timestamp to {C_P}{gps_json_file}{C_0}")
     print(f"{C_H}Saved offset [{offset_str}] to {C_P}{offset_file}{C_0}")
+    print(f"{C_H}Saved offset sec [{offset_sec}] to {C_P}{offset_file_sec}{C_0}")
     return offset_str
 
 
