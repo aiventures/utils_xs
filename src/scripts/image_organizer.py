@@ -337,7 +337,7 @@ def read_geosync_from_env(p_source: Path) -> str:
     return f"-geosync={t_offset}"
 
 
-def get_exiftool_cmd_export_meta(input_folder: Path) -> list:
+def get_exiftool_cmd_export_meta_recursive(input_folder: Path) -> list:
     """creates the exiftool command to export image data as json"""
 
     # command to export all exifdata in groups as json for given suffixes
@@ -398,40 +398,6 @@ def prepare_collateral_files(p_source: Path) -> None:
     time_offset = calculate_time_offset(p_work)
     # 4. Extract the OSM Link as default GPS Coordinates
     osm_coordinates = GeoLocation.get_openstreetmap_coordinates_from_folder(F_OSM_LAT_LON_ENV, p_source)
-
-
-def build_arg_parser() -> argparse.ArgumentParser:
-    """
-    Create and return a command-line argument parser for the program.
-
-    The parser supports optional input folder and output root folder arguments,
-    both defaulting to None to allow interactive prompts if not provided.
-
-    Returns:
-        argparse.ArgumentParser: Configured argument parser.
-    """
-    parser = argparse.ArgumentParser(description="Auto organize images by date using exif metadata.")
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=str,
-        default=None,
-        help="Source folder path where images were dumped (default: current folder if empty)",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default=None,
-        help=f"Output root folder where date folders are created (default: {P_PHOTOS_TRANSIENT_DEFAULT})",
-    )
-    parser.add_argument(
-        "-u",
-        "--update",
-        action="store_true",
-        help="Update metadata.json in output folder and all its first-level subfolders",
-    )
-    return parser
 
 
 def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
@@ -688,7 +654,7 @@ def exiftool_add_gpsmeta_from_gps(p_source: Path, f_gps_track: str | Path | None
     os.chdir(p_cwd)
 
 
-def exiftool_create_metadata(p_source: Path, output_root: Path) -> None:
+def exiftool_create_metadata_recursive(p_source: Path) -> None:
     """
     Execute exiftool to extract metadata from image files in the input folder recursively.
 
@@ -704,13 +670,13 @@ def exiftool_create_metadata(p_source: Path, output_root: Path) -> None:
     """
 
     output_path = p_source / "metadata.json"
-    cmd = get_exiftool_cmd_export_meta(p_source)
+    cmd = get_exiftool_cmd_export_meta_recursive(p_source)
 
     success = CmdRunner.run_cmd_and_stream(cmd, output_path)
     if success:
-        print(f"{C_H}Metadata successfully saved to {C_P}{output_path}{C_0}")
+        print(f"{C_H}Metadata successfully saved  {C_P}{output_path}{C_0}")
     else:
-        print(f"{C_E}Exiftool failed for {p_source}{C_0}")
+        print(f"{C_E}Exiftool failed for command [{p_source}{C_0}]")
 
 
 def get_unprocessed_files(p_source: Union[str, Path], f_out: Optional[Union[str, Path]] = None) -> Dict[str, List[str]]:
@@ -798,7 +764,7 @@ def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
     return output_dict
 
 
-def update_metadata_in_all_subfolders(p_root: Path) -> None:
+def update_metadata_recursive(p_root: Path) -> None:
     """
     Run exiftool on all first-level subfolders of output_root to update metadata.json files.
     Skips the root folder itself.
@@ -816,7 +782,7 @@ def update_metadata_in_all_subfolders(p_root: Path) -> None:
         file_count = len(files)
 
         print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
-        cmd = get_exiftool_cmd_export_meta(folder)
+        cmd = get_exiftool_cmd_export_meta_recursive(folder)
 
         success = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
         status = "✅ Success" if success else "❌ Failed"
@@ -969,7 +935,7 @@ def summarize_and_update_metadata(output_root: Path, date_list: List[str]) -> Li
             print(f"\n{C_T}### Writing Metadata: {C_P}{folder_path}{C_T} ---")
             print(f"Found {C_I}{file_count}{C_T} files. Running exiftool...{C_0}")
 
-            cmd = get_exiftool_cmd_export_meta(folder_path)
+            cmd = get_exiftool_cmd_export_meta_recursive(folder_path)
 
             success = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
             if not success:
@@ -980,6 +946,124 @@ def summarize_and_update_metadata(output_root: Path, date_list: List[str]) -> Li
     return summary
 
 
+def build_arg_parser() -> argparse.ArgumentParser:
+    """
+    Create and return a command-line argument parser for the program.
+
+    The parser supports optional input folder and output root folder arguments,
+    both defaulting to None to allow interactive prompts if not provided.
+
+    Returns:
+        argparse.ArgumentParser: Configured argument parser.
+    """
+    parser = argparse.ArgumentParser(description="Auto organize images by date using exif metadata.")
+    parser.add_argument(
+        "-ps",
+        "--p_source",
+        type=str,
+        default=None,
+        help="Source folder path where images were dumped (default: current folder if empty)",
+    )
+    parser.add_argument(
+        "-po",
+        "--p_output",
+        type=str,
+        default=None,
+        help=f"Output root folder where date folders are created (default: {P_PHOTOS_TRANSIENT_DEFAULT})",
+    )
+    parser.add_argument(
+        "-aju",
+        "--action_meta_json_update_recursive",
+        action="store_true",
+        help="Update metadata.json in output folder and all its first-level subfolders",
+    )
+    parser.add_argument(
+        "-ap",
+        "--action_prepare_geo_meta",
+        action="store_true",
+        help="Prepare collateral files for geo tagging",
+    )
+
+    return parser
+
+
+def action_prepare_geo_meta(args: argparse.Namespace) -> bool | None:
+    "Prepare Metadata to be used for geo tagging"
+    if args.action_prepare_geo_meta is not True:
+        return None
+
+    # validate and get the source path
+    p_source = validate_p_source(args)
+    if p_source is None:
+        p_source = Path().resolve()
+
+    prepare_collateral_files(p_source)
+    return True
+
+
+def action_update_metadata_recursive(args: argparse.Namespace) -> bool | None:
+    """Update the exiftool metadata json in all child folder"""
+    if args.action_meta_json_update_recursive is not True:
+        return None
+
+    p_root = args.p_source
+    if p_root is None:
+        outp = input(
+            f"{C_Q}Enter source root folder path for update (default {P_PHOTOS_TRANSIENT_DEFAULT}): {C_0}"
+        ).strip()
+        p_root = Path(outp) if outp else P_PHOTOS_TRANSIENT_DEFAULT
+    else:
+        p_root = Path(p_root)
+
+    if not p_root.exists() or not p_root.is_dir():
+        print(f"{C_E}Output folder {p_root} not found or invalid.{C_0}")
+        return False
+
+    update_metadata_recursive(p_root)
+
+    return True
+
+
+def validate_p_source(args: argparse.Namespace) -> Path | None:
+    """validates input folder if required"""
+    # Determine input folder
+    p_source = args.p_source
+    if p_source is None:
+        inp = input(f"{C_Q}Enter input folder path (default current folder): {C_0}").strip()
+        if inp:
+            p_source = Path(inp)
+        else:
+            p_source = Path.cwd()
+    else:
+        p_source = Path(p_source)
+
+    if not p_source.exists() or not p_source.is_dir():
+        print(f"{C_E}Input folder {p_source} not found or invalid.{C_0}")
+        return None
+
+    return p_source
+
+
+def cmd_validate_p_output(args: argparse.Namespace) -> Path | None:
+    """validates output folder if required"""
+    # Determine input folder
+    p_output = args.p_output
+    if p_output is None:
+        outp = input(f"{C_Q}Enter output folder path (default current folder): {C_0}").strip()
+        if outp:
+            p_output = Path(outp)
+        else:
+            p_output = Path.cwd()
+    else:
+        p_output = Path(p_output)
+
+    if not p_output.exists() or not p_output.is_dir():
+        print(f"{C_E}Input folder {p_output} not found or invalid.{C_0}")
+        return None
+
+    return p_output
+
+
 def main() -> None:
     """
     Main function that orchestrates reading arguments, running exiftool,
@@ -988,85 +1072,61 @@ def main() -> None:
 
     Interactively prompts for inputs if no arguments are specified.
     """
+    success: bool | None = False
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    if args.update:
-        output_root = args.output
-        if output_root is None:
-            outp = input(
-                f"{C_Q}Enter output root folder path for update (default {P_PHOTOS_TRANSIENT_DEFAULT}): {C_0}"
-            ).strip()
-            output_root = Path(outp) if outp else P_PHOTOS_TRANSIENT_DEFAULT
-        else:
-            output_root = Path(output_root)
-        if not output_root.exists() or not output_root.is_dir():
-            print(f"{C_E}Output folder {output_root} not found or invalid.{C_0}")
-            return
-        update_metadata_in_all_subfolders(output_root)
-        return  # Exit after update
+    # now performa all actions as controlled by input params
 
-    # Determine input folder
-    input_folder = args.input
-    if input_folder is None:
-        inp = input(f"{C_Q}Enter input folder path (default current folder): {C_0}").strip()
-        if inp:
-            input_folder = Path(inp)
-        else:
-            input_folder = Path.cwd()
-            # input_folder = P_IMAGE_DUMP_DEFAULT
-    else:
-        input_folder = Path(input_folder)
-
-    if not input_folder.exists() or not input_folder.is_dir():
-        print(f"{C_E}Input folder {input_folder} not found or invalid.{C_0}")
-        return
+    # 1. write the metadata.json for all child paths
+    success = action_update_metadata_recursive(args)
+    # 2. prepare the metadata for a dedicated output folder
+    success = action_prepare_geo_meta(args)
 
     # Determine output root folder
-    output_root = args.output
-    if output_root is None:
-        outp = input(f"{C_Q}Enter output root folder path (default {P_PHOTOS_TRANSIENT_DEFAULT}): {C_0}").strip()
-        if outp:
-            output_root = Path(outp)
-        else:
-            output_root = P_PHOTOS_TRANSIENT_DEFAULT
-    else:
-        output_root = Path(output_root)
-
-    if not output_root.exists():
-        output_root.mkdir(parents=True, exist_ok=True)
+    # output_root = args.output
+    # if output_root is None:
+    #     outp = input(f"{C_Q}Enter output root folder path (default {P_PHOTOS_TRANSIENT_DEFAULT}): {C_0}").strip()
+    #     if outp:
+    #         output_root = Path(outp)
+    #     else:
+    #         output_root = P_PHOTOS_TRANSIENT_DEFAULT
+    # else:
+    #     output_root = Path(output_root)
+    # if not output_root.exists():
+    #     output_root.mkdir(parents=True, exist_ok=True)
 
     # Run exiftool to generate metadata.json for input folder
-    exiftool_create_metadata(input_folder, output_root)
+    # exiftool_create_metadata_recursive(input_folder, output_root)
 
-    metadata_path = input_folder / "metadata.json"
-    if not metadata_path.exists():
-        print(f"{C_E}Metadata file not found. Exiftool may have failed.{C_0}")
-        return
+    # metadata_path = input_folder / "metadata.json"
+    # if not metadata_path.exists():
+    #     print(f"{C_E}Metadata file not found. Exiftool may have failed.{C_0}")
+    #     return
 
-    # Process metadata.json
-    file_dict = process_metadata_json(metadata_path)
-    save_processed_dict(file_dict, input_folder / "file_dump.json")
-    print(f"{C_PY}Processed metadata saved as file_dump.json in input folder.{C_0}")
+    # # Process metadata.json
+    # file_dict = process_metadata_json(metadata_path)
+    # save_processed_dict(file_dict, input_folder / "file_dump.json")
+    # print(f"{C_PY}Processed metadata saved as file_dump.json in input folder.{C_0}")
 
-    # Move files by date
-    errors = move_files_by_date(input_folder, output_root, file_dict)
+    # # Move files by date
+    # errors = move_files_by_date(input_folder, output_root, file_dict)
 
-    if errors:
-        print(f"{C_E}The following files could not be moved:{C_0}")
-        for efile in errors:
-            print(f"{C_E} - {efile}{C_0}")
-    else:
-        print(f"{C_PY}All files moved successfully.{C_0}")
+    # if errors:
+    #     print(f"{C_E}The following files could not be moved:{C_0}")
+    #     for efile in errors:
+    #         print(f"{C_E} - {efile}{C_0}")
+    # else:
+    #     print(f"{C_PY}All files moved successfully.{C_0}")
 
-    # Summarize folders and update metadata.json in each dated folder
-    date_list = list(set(entry["date"] for entry in file_dict.values()))
-    summary = summarize_and_update_metadata(output_root, date_list)
-    print(f"\n{C_T}### Summary of moved files per date (in {output_root} ):{C_0}")
-    for idx, entry in enumerate(summary):
-        print(
-            f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}[{entry['date']}]{C_H}, Files moved:{C_B} {entry['file_count']}{C_0}"
-        )
+    # # Summarize folders and update metadata.json in each dated folder
+    # date_list = list(set(entry["date"] for entry in file_dict.values()))
+    # summary = summarize_and_update_metadata(output_root, date_list)
+    # print(f"\n{C_T}### Summary of moved files per date (in {output_root} ):{C_0}")
+    # for idx, entry in enumerate(summary):
+    #     print(
+    #         f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}[{entry['date']}]{C_H}, Files moved:{C_B} {entry['file_count']}{C_0}"
+    #     )
 
 
 if __name__ == "__main__":

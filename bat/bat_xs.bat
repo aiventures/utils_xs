@@ -1,0 +1,1 @@
+echo hugo bat_xs
