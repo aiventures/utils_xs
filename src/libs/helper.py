@@ -9,8 +9,9 @@ import json
 from json import JSONDecodeError
 
 
-import datetime
+# import datetime
 from datetime import timedelta
+from datetime import datetime
 import shutil
 import subprocess
 import traceback
@@ -20,7 +21,6 @@ from zoneinfo import ZoneInfo
 from configparser import ConfigParser
 from dateutil import parser as date_parser
 from bs4 import BeautifulSoup
-from datetime import datetime
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F
@@ -108,7 +108,7 @@ class CmdRunner:
     """Running Commands"""
 
     @staticmethod
-    def run_cmd_and_stream(cmd: List[str], output_path: Path) -> bool:
+    def run_cmd_and_stream(cmd: List[str], output_path: Path) -> list:
         """
         Run exiftool with the given command and stream stderr to console.
 
@@ -119,11 +119,13 @@ class CmdRunner:
         Returns:
             bool: True if the command succeeded, False otherwise.
         """
+        out = []
         try:
             with output_path.open("w", encoding="utf-8") as outfile:
                 process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
                 for line in process.stderr:
-                    print(f"{C_PY}{line.strip()}{C_0}")
+                    out.append(line.strip())
+                    print(line.strip())
                 process.wait()
             return process.returncode == 0
         except Exception as e:
@@ -131,7 +133,7 @@ class CmdRunner:
             return False
 
     @staticmethod
-    def run_cmd_and_print(cmd: List[str]) -> bool:
+    def run_cmd_and_print(cmd: List[str]) -> list:
         """
         Run a command and print both stdout and stderr to the console in real time.
 
@@ -141,6 +143,9 @@ class CmdRunner:
         Returns:
             bool: True if the command succeeded, False otherwise.
         """
+        out = []
+        print("hugo cmd ", cmd)
+
         try:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
@@ -150,18 +155,21 @@ class CmdRunner:
                 stderr_line = process.stderr.readline()
 
                 if stdout_line:
-                    print(f"{C_PY}{stdout_line.strip()}{C_0}")
+                    out.append(stdout_line.strip())
+                    print(f"{C_PY}[CMD] {stdout_line.strip()}{C_0}")
                 if stderr_line:
-                    print(f"{C_E}{stderr_line.strip()}{C_0}")
+                    out.append(stderr_line.strip())
+                    print(f"{C_E}[ERR] {stderr_line.strip()}{C_0}")
 
                 if not stdout_line and not stderr_line and process.poll() is not None:
                     break
 
-            return process.returncode == 0
+            return out
 
         except Exception as e:
             print(f"{C_E}Failed to run command: {e}{C_0}")
-            return False
+
+        return out
 
 
 class GeoLocation:
@@ -546,7 +554,7 @@ class Persistence:
         """
 
         def default_serializer(obj):
-            if isinstance(obj, datetime.datetime):
+            if isinstance(obj, datetime):
                 return obj.isoformat()
             return str(obj)
 

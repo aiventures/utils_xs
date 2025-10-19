@@ -171,6 +171,7 @@ import argparse
 # import json
 from json import JSONDecodeError
 import datetime
+
 import shutil
 import subprocess
 
@@ -183,7 +184,7 @@ from zoneinfo import ZoneInfo
 from dateutil import parser as date_parser
 
 # ANSI color codes
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
 from libs.helper import Persistence, GeoLocation, CmdRunner, Transformer, Helper
 
@@ -348,7 +349,7 @@ def get_exiftool_cmd_export_meta_recursive(input_folder: Path) -> list:
     return exif_cmd
 
 
-def get_exiftool_create_gps_metadata_from_gpx(p_source: Path) -> bool:
+def get_exiftool_create_gps_metadata_from_gpx(p_source: Path) -> list:
     """creates the exiftool command to create gpx data in image files
 
     Returns:
@@ -371,9 +372,9 @@ def get_exiftool_create_gps_metadata_from_gpx(p_source: Path) -> bool:
     exif_cmd = CMD_EXIFTOOL_GEOTAG.copy()
     additional_params = [geosync, "-geotag", f_gpx_merged, str(p_source)]
     exif_cmd.append(additional_params)
-    success = CmdRunner.run_cmd_and_print(exif_cmd)
+    output = CmdRunner.run_cmd_and_print(exif_cmd)
 
-    return success
+    return output
 
 
 def prepare_collateral_files(p_source: Path) -> None:
@@ -391,12 +392,16 @@ def prepare_collateral_files(p_source: Path) -> None:
     # 0. Delete any temporary files
     cleanup_env_files(p_source)
     # 1. Create Merged GPS, if not already present
+    print("HUGO merge_gpx")
     f_merged_gpx = GeoLocation.merge_gpx(p_work, F_GPX_ENV)
     # 2. Select Reference File and extract timestanp of camera
+    print("HUGO extract_image_timestamp")
     timstamp_dict_camera = extract_image_timestamp(p_source)
     # 3. Now Get the GPS Timestamp (as seen on the image of the previous image)
+    print("HUGO calculate_time_offset")
     time_offset = calculate_time_offset(p_work)
     # 4. Extract the OSM Link as default GPS Coordinates
+    print("HUGO get_openstreetmap_coordinates_from_folder")
     osm_coordinates = GeoLocation.get_openstreetmap_coordinates_from_folder(F_OSM_LAT_LON_ENV, p_source)
 
 
@@ -415,14 +420,23 @@ def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
             - "datetime": datetime.datetime object
             - "filename": absolute path to the image file
     """
-    # Step 1: Resolve image path
-    if not filepath:
-        fallback_path = Path.cwd() / "gps.jpg"
-        if fallback_path.exists():
-            filepath = fallback_path
-        else:
+    # check for input and resaolve paths or files
+    f = None
+    p = Path.cwd()
+    if isinstance(p, str):
+        p = Path(filepath)
+    if p.is_file():
+        f = p
+        p = p.parent
+    elif filepath.is_dir():
+        p = filepath
+    # now determine file path
+
+    if f is None:
+        f = p / "gps.jpg"
+        if not f.exists():
             # note: is case sensitive
-            jpg_files = list(Path.cwd().glob("*.jpg"))
+            jpg_files = list(p.glob("*.jpg"))
             if not jpg_files:
                 print(f"{C_E}No JPG files found in current directory.{C_0}")
                 return {}
@@ -431,33 +445,37 @@ def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
                 print(f"{C_I}[{idx}] {C_P}{file.name}{C_0}")
             try:
                 choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
-                filepath = jpg_files[choice]
+                f = jpg_files[choice]
             except (ValueError, IndexError):
                 print(f"{C_E}Invalid selection.{C_0}")
                 return {}
 
-    filepath = Path(filepath).resolve()
-    if not filepath.exists():
+    if not f.exists():
         print(f"{C_E}File not found: {filepath}{C_0}")
         return {}
 
     # Step 2: Run exiftool extracting Original DateTime Original
     cmd = CMD_EXIFTOOL_GET_DATE.copy()
-    cmd.append(str(filepath))
+    cmd.append(str(f))
 
     print(f"{C_T}Running exiftool command:{C_0} {cmd}")
-    success = CmdRunner.run_cmd_and_print(cmd)
-    if not success:
+    cmd_output = CmdRunner.run_cmd_and_print(cmd)
+    timestamp_camera = None
+    # exiftool.exe -SubSecDateTimeOriginal -b "<path>\gps.jpg"
+    if not cmd_output:
         print(f"{C_E}Exiftool command failed.{C_0}")
         return {}
+    else:
+        timestamp_camera = cmd_output[0]
+        print(f"{C_T}Got Timestamp from {C_F}[{f.name}] {C_H}[{timestamp_camera}]{C_0}")
 
     # Step 3: Capture output manually (if needed, could be redirected or parsed differently)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        original = result.stdout.strip()
-        output = generate_timestamp_dict(original, filepath)
-        Persistence.save_json(filepath.parent / F_TIMESTAMP_CAMERA, output)
-        print(f"{C_H}GPS timestamp saved to {C_P}{filepath.parent / F_TIMESTAMP_CAMERA}{C_0}")
+        timestamp_camera = timestamp_camera.strip()
+        output = generate_timestamp_dict(timestamp_camera, f)
+        f_timestamp_camera = f.parent / F_TIMESTAMP_CAMERA
+        Persistence.save_json(f_timestamp_camera, output)
+        print(f"{C_H}GPS timestamp saved to {C_P}{f_timestamp_camera}{C_0}")
         return output
     except subprocess.CalledProcessError as e:
         print(f"{C_E}Exiftool failed: {e.stderr}{C_0}")
@@ -485,6 +503,8 @@ def render_mini_timeline(gps_ts: int, cam_ts: int) -> None:
         gps_pos = midpoint
         cam_pos = int(midpoint + offset_sec)
 
+    print("HUGO POS", gps_pos, "   ", cam_pos)
+
     # Build timeline
     timeline = ["─"] * total_width
     timeline[gps_pos] = "🟦"  # GPS
@@ -493,7 +513,7 @@ def render_mini_timeline(gps_ts: int, cam_ts: int) -> None:
     print(f"\n{C_T}Mini Timeline:{C_0}")
     print(f"{C_PY}GPS 🟦{' ' * (gps_pos)}|{' ' * (cam_pos - gps_pos - 1)}🟥 Camera{C_0}")
     print(f"{C_H}{''.join(timeline)}{C_0}")
-    print(f"{C_B}Offset: {offset_sec:.3f} seconds{C_0}")
+    print(f"{C_B}Offset: {offset_sec:.3f} seconds{C_0}\n")
 
 
 def show_image(f_image: Path) -> None:
@@ -502,10 +522,14 @@ def show_image(f_image: Path) -> None:
     if not f_image.is_file():
         print(f"{C_E}Can't open file [{f_image}]{C_0}")
         return
+    Path.cwd
+    p_cwd = Path.cwd()
     print(f"\n{C_T}### Opening File in default image program: {C_F}[{f_image}]{C_0}")
+    os.chdir(f_image.parent)
     # open the image in the default viewer
-    cmd = ["start", str(f_image)]
-    CmdRunner.run_cmd_and_print(cmd)
+    # the cmd command doesn't work here
+    os.system(f"start {f_image.name}")
+    os.chdir(p_cwd)
 
 
 def cleanup_env_files(path: Path = None):
@@ -553,13 +577,24 @@ def calculate_time_offset(p_source: Path = None, timezone: str = "Europe/Berlin"
 
     # Step 2: Load or generate timestamps
     camera_data = Persistence.read_json(camera_json_file) if camera_json_file.exists() else {}
+    # recreate the datetime
+    if camera_data:
+        timestamp_camera = float(camera_data.get("timestamp", 0)) / 1000
+        datetime_camera = datetime.datetime.fromtimestamp(timestamp_camera)
+        camera_data["datetime"] = datetime_camera
+
     # read gps data if already saved
     gps_data = Persistence.read_json(gps_json_file) if gps_json_file.exists() else {}
+    if gps_data:
+        timestamp_gps = float(gps_data.get("timestamp", 0)) / 1000
+        datetime_gps = datetime.datetime.fromtimestamp(timestamp_gps)
+        gps_data["datetime"] = datetime_gps
 
     if not camera_data:
         print(f"{C_E}Missing TIMESTAMP_CAMERA.json. Offset will be set to zero.{C_0}")
         offset_ms = 0
     else:
+        # create the date from camera
         if not gps_data:
             print(f"{C_E}Missing TIMESTAMP_GPS.json. Please enter GPS time manually{C_0}")
             f_image = Path(camera_data.get("filename", "NA"))
@@ -567,32 +602,62 @@ def calculate_time_offset(p_source: Path = None, timezone: str = "Europe/Berlin"
                 print(f"{C_H}Show Image [{f_image}]{C_0}")
                 show_image(f_image)
 
-            time_str = input(f"{C_Q}Enter GPS time [hh:mm:ss](blank to skip): {C_0}").strip()
+            time_str = input(
+                f"{C_Q}Enter GPS time [hh:mm:ss] (blank to skip) {C_I}[CAMERA {datetime_camera.strftime('%H:%M:%S')}]: {C_0}"
+            ).strip()
             try:
                 parts = [int(p) for p in time_str.split(":")]
                 while len(parts) < 3:
                     parts.append(0)
                 hour, minute, second = parts[:3]
                 local_zone = ZoneInfo(timezone)
-                today = datetime.date.today()
+
+                # use date from camera and rest from input
                 dt_local = datetime.datetime(
-                    today.year, today.month, today.day, hour, minute, second, tzinfo=local_zone
+                    datetime_camera.year,
+                    datetime_camera.month,
+                    datetime_camera.day,
+                    hour,
+                    minute,
+                    second,
+                    0,
+                    tzinfo=local_zone,
                 )
+                tz_offset = Helper.get_utc_offset(dt_local)
+                # get the date foramt string including time zone
+                dt_local_str = dt_local.strftime("%Y:%m:%d %H:%M:%S") + ".00" + tz_offset[:-3]
                 gps_data = generate_timestamp_dict(dt_local)
-                gps_data["original"] = time_str  # preserve user input
-            except Exception as e:
-                print(f"{C_E}Invalid GPS Time, no offset applied{C_0}")
+                gps_data["original"] = dt_local_str  # preserve user input
+                gps_data["filename"] = camera_data["filename"]  # preserve user input
+
+            except Exception as _:
+                print(f"{C_E}No GPS Time found, will copy camera timestamps{C_0}")
+                # copy the camera data as offset data of gps
+                gps_data = camera_data.copy()
                 offset_ms = 0
 
         gps_ts = gps_data.get("timestamp", 0)
         cam_ts = camera_data.get("timestamp", 0)
         offset_sec = int((cam_ts - gps_ts) / 1000)
         offset_str = Helper.format_seconds_offset(offset_sec)
+        dt_gps_str = gps_data["datetime"].strftime("%H:%M:%S")
 
-        print(f"{C_H}Camera Time: {C_P}{camera_data.get('original', 'N/A')}{C_0}")
-        print(f"{C_H}GPS Time: {C_P}{gps_data.get('original', 'N/A')}{C_0}")
-        print(f"{C_H}Offset (s): {C_B}{offset_sec}sec / {offset_str}{C_0}")
-        render_mini_timeline(gps_ts, cam_ts)
+        dt_cam_str = camera_data["datetime"].strftime("%H:%M:%S")
+        offset_str2 = f"{str(offset_str).zfill(2)}"
+        if offset_sec >= 0:
+            c_offset = f"{C_PY}"
+            offset_str2 = f"{C_PY}{offset_str2}"
+        else:
+            c_offset = f"{C_E}"
+            offset_str2 = f"{C_E}{offset_str2}"
+
+        print(f"\n{C_T}### Camera Times and Offset: {C_H}T(GPS) + T(OFFSET) = T(CAMERA){C_0}")
+        print(f"{C_W}📷 Camera Time: {camera_data.get('original', 'N/A')}{C_0}")
+        print(f"{C_I}🛰️ GPS Time   : {gps_data.get('original', 'N/A')}{C_0}")
+        print(f"{c_offset}⌚ Offset (s) : {offset_sec}sec / {offset_str2}{C_0}")
+        print(f"{C_H}🛰️+⌚=📷      : {C_I}{dt_gps_str}{offset_str2}{C_T}={C_W}{dt_cam_str}{C_0}\n")
+
+        # render_mini_timeline(gps_ts, cam_ts)
 
     # Step 4: Save all outputs
     Persistence.save_json(camera_json_file, camera_data)
@@ -600,7 +665,7 @@ def calculate_time_offset(p_source: Path = None, timezone: str = "Europe/Berlin"
     Persistence.save_txt(offset_file, offset_str)
     Persistence.save_txt(offset_file_sec, str(offset_sec))
 
-    print(f"{C_H}Saved camera timestamp to {C_P}{camera_json_file}{C_0}")
+    print(f"\n{C_H}Saved camera timestamp to {C_P}{camera_json_file}{C_0}")
     print(f"{C_H}Saved GPS timestamp to {C_P}{gps_json_file}{C_0}")
     print(f"{C_H}Saved offset [{offset_str}] to {C_P}{offset_file}{C_0}")
     print(f"{C_H}Saved offset sec [{offset_sec}] to {C_P}{offset_file_sec}{C_0}")
@@ -672,8 +737,8 @@ def exiftool_create_metadata_recursive(p_source: Path) -> None:
     output_path = p_source / "metadata.json"
     cmd = get_exiftool_cmd_export_meta_recursive(p_source)
 
-    success = CmdRunner.run_cmd_and_stream(cmd, output_path)
-    if success:
+    cmd_output = CmdRunner.run_cmd_and_stream(cmd, output_path)
+    if cmd_output:
         print(f"{C_H}Metadata successfully saved  {C_P}{output_path}{C_0}")
     else:
         print(f"{C_E}Exiftool failed for command [{p_source}{C_0}]")
@@ -784,8 +849,8 @@ def update_metadata_recursive(p_root: Path) -> None:
         print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
         cmd = get_exiftool_cmd_export_meta_recursive(folder)
 
-        success = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
-        status = "✅ Success" if success else "❌ Failed"
+        cmd_output = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
+        status = "✅ Success" if cmd_output else "❌ Failed"
         summary.append({"folder": folder.name, "file_count": file_count, "status": status})
 
     print(f"\n{C_T}### Metadata Update Summary:{C_0}")
@@ -937,8 +1002,8 @@ def summarize_and_update_metadata(output_root: Path, date_list: List[str]) -> Li
 
             cmd = get_exiftool_cmd_export_meta_recursive(folder_path)
 
-            success = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
-            if not success:
+            cmd_output = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
+            if not cmd_output:
                 print(f"{C_E}Exiftool failed in folder {folder_path}{C_0}")
 
             summary.append({"date": date_str, "file_count": file_count})
@@ -978,7 +1043,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Update metadata.json in output folder and all its first-level subfolders",
     )
     parser.add_argument(
-        "-ap",
+        "-apg",
         "--action_prepare_geo_meta",
         action="store_true",
         help="Prepare collateral files for geo tagging",
