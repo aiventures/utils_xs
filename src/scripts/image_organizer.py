@@ -393,7 +393,11 @@ def prepare_collateral_files(p_source: Path) -> None:
     cleanup_env_files(p_source)
     # 1. Create Merged GPS, if not already present
     print("HUGO merge_gpx")
-    f_merged_gpx = GeoLocation.merge_gpx(p_work, F_GPX_ENV)
+    # create the merged gpx
+    f_merged_gpx = GeoLocation.merge_gpx(p_work, F_GPX_MERGED)
+    # store the file name of the merged gpx into an env file
+    # TODO store the file name of the merged gpx into an env file
+
     # 2. Select Reference File and extract timestanp of camera
     print("HUGO extract_image_timestamp")
     timstamp_dict_camera = extract_image_timestamp(p_source)

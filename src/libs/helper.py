@@ -11,7 +11,7 @@ from json import JSONDecodeError
 
 # import datetime
 from datetime import timedelta
-from datetime import datetime
+from datetime import datetime as DateTime
 import shutil
 import subprocess
 import traceback
@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Union, Tuple, Optional
 from zoneinfo import ZoneInfo
 from configparser import ConfigParser
 from dateutil import parser as date_parser
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F
@@ -50,11 +50,11 @@ class Helper:
         timezone="Europe/Berlin",
         time_format="%Y:%m:%d %H:%M:%S",
         offset_sec: int = 0,
-    ) -> datetime:
+    ) -> DateTime:
         """converts into datetime"""
 
         # Parse the string into a naive datetime object
-        dt_naive = datetime.strptime(dt_str, time_format)
+        dt_naive = DateTime.strptime(dt_str, time_format)
 
         # Attach a time zone (e.g., Europe/Berlin)
         dt_local = dt_naive.replace(tzinfo=ZoneInfo(timezone))
@@ -63,7 +63,7 @@ class Helper:
 
     @staticmethod
     def get_utc_offset(
-        dt_in: datetime | str = None,
+        dt_in: DateTime | str = None,
         timezone: str = "Europe/Berlin",
         time_format: str = "%Y:%m:%d %H:%M:%S",
         offset_sec: int = 0,
@@ -74,7 +74,7 @@ class Helper:
 
         Parameters:
         - tz_name: str — IANA timezone name (e.g., 'Europe/Berlin', 'America/New_York')
-        - dt: datetime — Optional datetime object. Defaults to now.
+        - dt: DateTime — Optional DateTime object. Defaults to now.
 
         Returns:
         - str — Offset string in format ±HH:MM
@@ -82,10 +82,10 @@ class Helper:
         Example:
         - get_dst_offset_string("Europe/Berlin"))  # Might return "+02:00" during DST
         """
-        dt = datetime.now()
+        dt = DateTime.now()
         if isinstance(dt_in, str):
             dt = Helper.get_datetime_from_format_string(dt_in, timezone, time_format, offset_sec)
-        elif isinstance(dt_in, datetime):
+        elif isinstance(dt_in, DateTime):
             dt = dt_in
 
         tz = ZoneInfo(timezone)
@@ -176,6 +176,20 @@ class GeoLocation:
     """Helper for Geolocation Handling."""
 
     @staticmethod
+    def create_gpx_header(soup: BeautifulSoup) -> Tag:
+        gpx_tag = soup.new_tag("gpx")
+        gpx_tag.attrs = {
+            "creator": "Garmin Connect",
+            "version": "1.1",
+            "xmlns": "http://www.topografix.com/GPX/1/1",
+            "xmlns:ns2": "http://www.garmin.com/xmlschemas/GpxExtensions/v3",
+            "xmlns:ns3": "http://www.garmin.com/xmlschemas/TrackPointExtension/v1",
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": "http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/11.xsd",
+        }
+        return gpx_tag
+
+    @staticmethod
     def merge_gpx(p_source: Union[str, Path], f_output: Union[str, Path]) -> Union[str, None]:
         """
         Merge multiple GPX files in a folder into a single GPX file.
@@ -261,10 +275,10 @@ class GeoLocation:
 
             metadata = soup.find("metadata")
             time_tag = metadata.find("time") if metadata else None
-            time_val = datetime.datetime.max
+            time_val = DateTime.max
             if time_tag:
                 try:
-                    time_val = datetime.datetime.fromisoformat(time_tag.text.replace("Z", "+00:00"))
+                    time_val = DateTime.fromisoformat(time_tag.text.replace("Z", "+00:00"))
                 except Exception:
                     pass
             metadata_time_map[gpx_file] = (time_val, metadata)
@@ -276,24 +290,16 @@ class GeoLocation:
         def trkpt_time(trkpt):
             time_tag = trkpt.find("time")
             try:
-                return datetime.datetime.fromisoformat(time_tag.text.replace("Z", "+00:00"))
+                return DateTime.fromisoformat(time_tag.text.replace("Z", "+00:00"))
             except Exception:
-                return datetime.datetime.max
+                return DateTime.max
 
         trkpt_elements.sort(key=trkpt_time)
 
         # Create new GPX structure
         soup_out = BeautifulSoup(features="xml")
-        gpx_tag = soup_out.new_tag(
-            "gpx",
-            creator="Garmin Connect",
-            version="1.1",
-            xmlns="http://www.topografix.com/GPX/1/1",
-            xmlns_ns3="http://www.garmin.com/xmlschemas/TrackPointExtension/v1",
-            xmlns_xsi="http://www.w3.org/2001/XMLSchema-instance",
-            xmlns_ns2="http://www.garmin.com/xmlschemas/GpxExtensions/v3",
-            xsi_schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/11.xsd",
-        )
+        gpx_tag = GeoLocation.create_gpx_header(soup_out)
+
         soup_out.append(gpx_tag)
 
         # Add earliest metadata
@@ -318,7 +324,8 @@ class GeoLocation:
         gpx_tag.append(trk_tag)
 
         # Save to file
-        Persistence.save_txt(f_output, str(soup_out))
+        soup_str = soup_out.prettify()
+        Persistence.save_txt(f_output, soup_str)
         # with f_output.open("w", encoding="utf-8") as f:
         #     f.write(str(soup_out))
 
@@ -554,7 +561,7 @@ class Persistence:
         """
 
         def default_serializer(obj):
-            if isinstance(obj, datetime):
+            if isinstance(obj, DateTime):
                 return obj.isoformat()
             return str(obj)
 
@@ -675,9 +682,9 @@ class Transformer:
 
             # Use today's date with provided time
             local_zone = ZoneInfo(timezone)
-            today = datetime.date.today()
-            dt_local = datetime.datetime(today.year, today.month, today.day, hour, minute, second, tzinfo=local_zone)
-            dt_utc = dt_local.astimezone(datetime.timezone.utc)
+            today = DateTime.date.today()
+            dt_local = DateTime(today.year, today.month, today.day, hour, minute, second, tzinfo=local_zone)
+            dt_utc = dt_local.astimezone(DateTime.timezone.utc)
             utc_str = dt_utc.isoformat()
             timestamp_ms = int(dt_utc.timestamp() * 1000)
 
