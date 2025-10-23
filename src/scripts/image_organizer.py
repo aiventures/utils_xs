@@ -221,8 +221,11 @@ CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-progress50", "-json"] + SUFFIX_ARGS
 # Shows the geolocations as json file when there are GPS Coordinates available
 # exiftool -api geolocation "-geolocation*" -lang de -json <file/path>
 CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-api", "geolocation", "-lang", "de", "-progress50", "-json"] + SUFFIX_ARGS
+# 5. EXIFTOOL to export reverse Geo Coordinates base on lat lon
+# exiftool -g3 -a -json -lang de -api geolocation=40.748817,-73.985428
+CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api", "geolocation"]
 
-#
+
 # https://exiftool.org/Shift.html
 # https://exiftool.org/#shift
 # exiftool "-AllDates+=0:0:0 0:0:42" -overwrite_original yourfile.jpg
@@ -377,7 +380,7 @@ def get_exiftool_create_gps_metadata_from_gpx(p_source: Path) -> list:
     return output
 
 
-def prepare_collateral_files(p_source: Path) -> None:
+def prepare_collateral_files(p_source: Path, show_gps_image: bool = True) -> None:
     """Prepare collateral files centrally.
     - Delete Collateral Files first
     - Merge GPX Files if there are any => F_GPX_ENV
@@ -394,18 +397,18 @@ def prepare_collateral_files(p_source: Path) -> None:
     # 1. Create Merged GPS, if not already present
     print("HUGO merge_gpx")
     # create the merged gpx
-    f_merged_gpx = GeoLocation.merge_gpx(p_work, F_GPX_MERGED)
+    _ = GeoLocation.merge_gpx(p_work, F_GPX_MERGED)
     # store the file name of the merged gpx into an env file
-    # TODO store the file name of the merged gpx into an env file
-
+    Persistence.save_txt(p_work.joinpath(F_GPX_ENV), str(p_work.joinpath(F_GPX_MERGED)))
     # 2. Select Reference File and extract timestanp of camera
     print("HUGO extract_image_timestamp")
     timstamp_dict_camera = extract_image_timestamp(p_source)
     # 3. Now Get the GPS Timestamp (as seen on the image of the previous image)
     print("HUGO calculate_time_offset")
-    time_offset = calculate_time_offset(p_work)
+    time_offset = calculate_time_offset(p_work, show_gps_image)
     # 4. Extract the OSM Link as default GPS Coordinates
     print("HUGO get_openstreetmap_coordinates_from_folder")
+    # TODO create a dict with all metadata
     osm_coordinates = GeoLocation.get_openstreetmap_coordinates_from_folder(F_OSM_LAT_LON_ENV, p_source)
 
 
@@ -543,7 +546,7 @@ def cleanup_env_files(path: Path = None):
     _ = [p_work.joinpath(f).unlink(missing_ok=True) for f in F_TMP_FILES]
 
 
-def calculate_time_offset(p_source: Path = None, timezone: str = "Europe/Berlin") -> str:
+def calculate_time_offset(p_source: Path = None, show_gps_image: bool = True, timezone: str = "Europe/Berlin") -> str:
     """
     Calculate the time offset between camera and GPS timestamps and save results.
     T_GPS + T_OFFSET = T_CAMERA
@@ -602,7 +605,7 @@ def calculate_time_offset(p_source: Path = None, timezone: str = "Europe/Berlin"
         if not gps_data:
             print(f"{C_E}Missing TIMESTAMP_GPS.json. Please enter GPS time manually{C_0}")
             f_image = Path(camera_data.get("filename", "NA"))
-            if f_image.is_file:
+            if f_image.is_file and show_gps_image:
                 print(f"{C_H}Show Image [{f_image}]{C_0}")
                 show_image(f_image)
 
@@ -1053,6 +1056,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Prepare collateral files for geo tagging",
     )
 
+    parser.add_argument(
+        "-ni",
+        "--action_no_image_display",
+        action="store_false",
+        help="do not show gps image",
+    )
+
     return parser
 
 
@@ -1061,12 +1071,14 @@ def action_prepare_geo_meta(args: argparse.Namespace) -> bool | None:
     if args.action_prepare_geo_meta is not True:
         return None
 
+    # action_no_image_display
+
     # validate and get the source path
     p_source = validate_p_source(args)
     if p_source is None:
         p_source = Path().resolve()
 
-    prepare_collateral_files(p_source)
+    prepare_collateral_files(p_source, args.action_no_image_display)
     return True
 
 

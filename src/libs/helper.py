@@ -23,8 +23,11 @@ from dateutil import parser as date_parser
 from bs4 import BeautifulSoup, Tag
 
 # ANSI color codes
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
+
+CMD_EXIFTOOL = MY_CMD_EXIFTOOL
+
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +136,7 @@ class CmdRunner:
             return False
 
     @staticmethod
-    def run_cmd_and_print(cmd: List[str]) -> list:
+    def run_cmd_and_print(cmd: List[str], decode: bool = True) -> list:
         """
         Run a command and print both stdout and stderr to the console in real time.
 
@@ -155,11 +158,17 @@ class CmdRunner:
                 stderr_line = process.stderr.readline()
 
                 if stdout_line:
-                    out.append(stdout_line.strip())
-                    print(f"{C_PY}[CMD] {stdout_line.strip()}{C_0}")
+                    _s = stdout_line.strip()
+                    if decode:
+                        _s = _s.encode("latin1").decode("utf-8")
+                    out.append(_s)
+                    print(f"{C_PY}[CMD] {_s}{C_0}")
                 if stderr_line:
-                    out.append(stderr_line.strip())
-                    print(f"{C_E}[ERR] {stderr_line.strip()}{C_0}")
+                    _s = stderr_line.strip()
+                    if decode:
+                        _s = _s.encode("latin1").decode("utf-8")
+                    out.append(_s)
+                    print(f"{C_E}[ERR] {_s}{C_0}")
 
                 if not stdout_line and not stderr_line and process.poll() is not None:
                     break
@@ -174,6 +183,8 @@ class CmdRunner:
 
 class GeoLocation:
     """Helper for Geolocation Handling."""
+
+    CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api"]
 
     @staticmethod
     def create_gpx_header(soup: BeautifulSoup) -> Tag:
@@ -395,10 +406,38 @@ class GeoLocation:
             if url and "openstreetmap.org" in url.lower():
                 coords = GeoLocation.latlon_from_osm_url(url)
                 if coords:
-                    matching.append((f.name, coords))
+                    # CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api", "geolocation"]
+                    lat_lon = f"geolocation={coords[0]}, {coords[1]}"
+                    cmd_exiftool_reverse = GeoLocation.CMD_EXIFTOOL_REVERSE_GEO.copy()
+                    cmd_exiftool_reverse.append(lat_lon)
+                    # get reverse geocoordinates
+                    reverse_geo_s = "".join(CmdRunner.run_cmd_and_print(cmd_exiftool_reverse))
+                    reverse_geo = {}
+                    geo_info = "No Reverse Geo Info"
+                    if reverse_geo_s:
+                        try:
+                            reverse_geo = json.loads(reverse_geo_s)[0]
+                            # print(json.dumps(reverse_geo, indent=4))
+                            reverse_geo = reverse_geo.get("Main", {})
+                            city = reverse_geo.get("GeolocationCity")
+                            region = reverse_geo.get("GeolocationRegion")
+                            subregion = reverse_geo.get("GeolocationSubregion")
+                            time_zone = reverse_geo.get("GeolocationTimeZone")
+                            distance = reverse_geo.get("GeolocationDistance")
+                            bearing = reverse_geo.get("GeolocationBearing")
+                            geo_info = f"{distance}, {bearing}° to {city}/{subregion}/{region} [{time_zone}]"
+                            print(f"\n{C_T}### OSM Coordinates {C_F}[{f.name}]: {C_Q}{coords}, {C_H}{geo_info}{C_0}")
+
+                        except (JSONDecodeError, IndexError) as e:
+                            print(
+                                f"{C_E}Error occured during parsing OSM Coordinates [{coords}],reverse geo:[{reverse_geo_s}], {e}"
+                            )
+                            continue
+                    # print(reverse_geo_s)
+                    matching.append((f.name, coords, geo_info, reverse_geo))
 
         if not matching:
-            print(f"{C_E}No OpenStreetMap links with coordinates found in {folder}{C_0}")
+            print(f"{C_W}No OpenStreetMap links with coordinates found in {folder}{C_0}")
             return None
 
         if len(matching) == 1:
@@ -530,7 +569,7 @@ class Persistence:
             return {}
 
     @staticmethod
-    def save_txt(filepath: Path, lines: Union[str, List[str]]) -> None:
+    def save_txt(filepath: Path | str, lines: Union[str, List[str]]) -> None:
         """
         Save a string or list of strings to a text file with exception handling.
 
@@ -538,17 +577,20 @@ class Persistence:
             filepath (Path): Path to save the file.
             lines (Union[str, List[str]]): Content to write. If string, converted to list.
         """
+        _filepath = filepath
+        if isinstance(filepath, str):
+            _filepath = Path(filepath)
         if isinstance(lines, str):
             out = lines
         else:
             out = "\n".join(lines)
 
         try:
-            with filepath.open("w", encoding="utf-8") as f:
+            with _filepath.open("w", encoding="utf-8") as f:
                 f.write(out)
-            print(f"{C_H}Saved text file: {C_P}{filepath}{C_0}")
+            print(f"{C_H}Saved text file: {C_P}{_filepath}{C_0}")
         except Exception as e:
-            print(f"{C_E}Failed to save file {filepath}: {e}{C_0}")
+            print(f"{C_E}Failed to save file {_filepath}: {e}{C_0}")
 
     @staticmethod
     def save_json(filepath: Path, data: Dict[str, Any]) -> None:
