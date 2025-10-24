@@ -288,10 +288,11 @@ F_TIMESTAMP_GPS = "timestamp_gps.json"
 F_TIMESTAMP_CAMERA = "timestamp_camera.json"
 F_OFFSET_ENV = "offset.env"
 F_OFFSET_SECS_ENV = "offset_sec.env"
-F_OSM_LAT_LON_ENV = "osm_lat_lon.env"
+F_OSM_INFO = "osm_geo_info.json"
+F_OSM_INFO_ENV = "osm_geo_info.env"
 F_GPX_ENV = "gpx_merged.env"
 F_GPX_MERGED = "gpx_merged.gpx"
-F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_LAT_LON_ENV]
+F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_INFO_ENV]
 
 
 def generate_timestamp_dict(source: Union[str, datetime.datetime], filepath: Optional[Path] = None) -> Dict[str, Any]:
@@ -408,8 +409,10 @@ def prepare_collateral_files(p_source: Path, show_gps_image: bool = True) -> Non
     time_offset = calculate_time_offset(p_work, show_gps_image)
     # 4. Extract the OSM Link as default GPS Coordinates
     print("HUGO get_openstreetmap_coordinates_from_folder")
-    # TODO create a dict with all metadata
-    osm_coordinates = GeoLocation.get_openstreetmap_coordinates_from_folder(F_OSM_LAT_LON_ENV, p_source)
+    # create a dict with all geo info metadata from osm link
+    f_osm_info = F_OSM_INFO
+    _ = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, p_work)
+    Persistence.save_txt(p_work.joinpath(F_OSM_INFO_ENV), str(p_work.joinpath(f_osm_info)))
 
 
 def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:

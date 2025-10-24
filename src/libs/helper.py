@@ -399,12 +399,18 @@ class GeoLocation:
                 print(f"{C_E}Failed to delete {env_file}: {e}{C_0}")
 
         url_files = list(folder.glob("*.url"))
-        matching = []
+        output = {}
 
-        for f in url_files:
+        for idx_f, f in enumerate(url_files, 1):
+            output_per_file = {}
+            output[idx_f] = output_per_file
+            output_per_file["idx"] = idx_f
+            output_per_file["file"] = f
             url = Persistence.read_internet_shortcut(str(f))
             if url and "openstreetmap.org" in url.lower():
                 coords = GeoLocation.latlon_from_osm_url(url)
+                output_per_file["lat_lon"] = coords
+                output_per_file["geo_reverse"] = {}
                 if coords:
                     # CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api", "geolocation"]
                     lat_lon = f"geolocation={coords[0]}, {coords[1]}"
@@ -412,21 +418,26 @@ class GeoLocation:
                     cmd_exiftool_reverse.append(lat_lon)
                     # get reverse geocoordinates
                     reverse_geo_s = "".join(CmdRunner.run_cmd_and_print(cmd_exiftool_reverse))
-                    reverse_geo = {}
+                    geo_reverse = {}
                     geo_info = "No Reverse Geo Info"
                     if reverse_geo_s:
                         try:
-                            reverse_geo = json.loads(reverse_geo_s)[0]
+                            geo_reverse = json.loads(reverse_geo_s)[0]
                             # print(json.dumps(reverse_geo, indent=4))
-                            reverse_geo = reverse_geo.get("Main", {})
-                            city = reverse_geo.get("GeolocationCity")
-                            region = reverse_geo.get("GeolocationRegion")
-                            subregion = reverse_geo.get("GeolocationSubregion")
-                            time_zone = reverse_geo.get("GeolocationTimeZone")
-                            distance = reverse_geo.get("GeolocationDistance")
-                            bearing = reverse_geo.get("GeolocationBearing")
-                            geo_info = f"{distance}, {bearing}° to {city}/{subregion}/{region} [{time_zone}]"
-                            print(f"\n{C_T}### OSM Coordinates {C_F}[{f.name}]: {C_Q}{coords}, {C_H}{geo_info}{C_0}")
+                            geo_reverse = geo_reverse.get("Main", {})
+                            output_per_file["geo_reverse"] = geo_reverse
+                            city = geo_reverse.get("GeolocationCity")
+                            region = geo_reverse.get("GeolocationRegion")
+                            subregion = geo_reverse.get("GeolocationSubregion")
+                            time_zone = geo_reverse.get("GeolocationTimeZone", "Europe/Berlin")
+                            distance = geo_reverse.get("GeolocationDistance")
+                            bearing = geo_reverse.get("GeolocationBearing")
+                            geo_info = f"{distance}, {bearing}° to {city}/{subregion}/{region}"
+                            output_per_file["geo_info"] = geo_info
+                            output_per_file["time_zone"] = time_zone
+                            print(
+                                f"\n{C_T}### OSM Coordinates {C_F}[{f.name}]: {C_Q}{coords}, {C_H}{geo_info} ({time_zone}){C_0}"
+                            )
 
                         except (JSONDecodeError, IndexError) as e:
                             print(
@@ -434,32 +445,34 @@ class GeoLocation:
                             )
                             continue
                     # print(reverse_geo_s)
-                    matching.append((f.name, coords, geo_info, reverse_geo))
+                    # output.append((f.name, coords, geo_info, geo_reverse))
 
-        if not matching:
+        if not output:
             print(f"{C_W}No OpenStreetMap links with coordinates found in {folder}{C_0}")
             return None
 
-        if len(matching) == 1:
-            selected = matching[0][1]
-            print(f"{C_T}Found one OpenStreetMap link: {C_P}{matching[0][0]}{C_0}")
+        if len(output) == 1:
+            selected = next(iter(output.values()))
+            print(f"{C_T}Found one OpenStreetMap link: {C_P}{selected['file']}{C_0}")
         else:
             print(f"{C_T}Multiple OpenStreetMap links found:{C_0}")
-            for idx, (fname, coords) in enumerate(matching):
-                print(f"{C_I}[{idx}] {C_P}{fname}{C_T} → lat: {coords[0]:.7f}, lon: {coords[1]:.7f}{C_0}")
+            for idx, info in output.items():
+                coords = info.get("lat_lon", ("NA", "NA"))
+                geo_info = info.get("geo_info", "NA")
+                print(
+                    f"{C_I}[{idx}] {C_P}{f}{C_T} → lat: {coords[0]:.5f}, lon: {coords[1]:.5f}{C_0},info: {geo_info} {C_0}"
+                )
+
             try:
                 choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
-                selected = matching[choice][1]
+                selected = output[choice]
             except (ValueError, IndexError):
                 print(f"{C_E}Invalid selection. No coordinates returned.{C_0}")
                 return None
 
-        lat_str = f"{selected[0]:.7f}"
-        lon_str = f"{selected[1]:.7f}"
         try:
-            with env_file.open("w", encoding="utf-8") as f:
-                f.write(f"{lat_str},{lon_str}\n")
-            print(f"{C_H}Saved coordinates to {C_P}{env_file}{C_0}")
+            Persistence.save_json(env_file, selected)
+            print(f"{C_H}Saved Geo Info to {C_P}{env_file}{C_0}")
         except Exception as e:
             print(f"{C_E}Failed to write coordinates: {e}{C_0}")
 
@@ -608,7 +621,7 @@ class Persistence:
             return str(obj)
 
         with filepath.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, default=default_serializer)
+            json.dump(data, f, indent=4, ensure_ascii=False, default=default_serializer)
 
     @staticmethod
     def read_internet_shortcut(filepath: str) -> Optional[str]:
