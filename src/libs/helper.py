@@ -1,5 +1,6 @@
 """Some Python Helper functions"""
 
+import os
 import sys
 import logging
 import re
@@ -8,9 +9,8 @@ import argparse
 import json
 from json import JSONDecodeError
 
-
 # import datetime
-from datetime import timedelta
+from datetime import timedelta, timezone
 from datetime import datetime as DateTime
 import shutil
 import subprocess
@@ -201,13 +201,84 @@ class GeoLocation:
         return gpx_tag
 
     @staticmethod
-    def merge_gpx(p_source: Union[str, Path], f_output: Union[str, Path]) -> Union[str, None]:
+    def create_dict_from_gpx(p_source: Union[str, Path], f_output: Union[str, Path] | None) -> Dict[str, Any]:
+        """
+        Parses a GPX file and returns its contents as a structured JSON-like dictionary.
+        Also saves the result to a JSON file.
+
+        Args:
+            p_source (Union[str, Path]): Path to the input GPX file.
+            f_output (Union[str, Path]): Path or filename for the output JSON file.
+
+        Returns:
+            Dict[str, Any]: Dictionary with keys:
+                - "header": attributes from the <gpx> tag
+                - "metadata": flattened metadata from <metadata>
+                - "track": dict of track points keyed by 13-digit UTC timestamp (int, milliseconds)
+        """
+        p_source = Path(p_source).resolve()
+        f_output = Path(f_output)
+        if not f_output.is_absolute():
+            f_output = p_source / f_output
+
+        with p_source.open("r", encoding="utf-8") as f:
+            soup = BeautifulSoup(f, "xml")
+
+        # Extract header attributes from <gpx>
+        gpx_tag = soup.find("gpx")
+        header = {k.replace(":", "_"): v for k, v in gpx_tag.attrs.items()}
+
+        # Extract metadata
+        metadata_tag = soup.find("metadata")
+        metadata = {}
+        if metadata_tag:
+            for child in metadata_tag.find_all(recursive=False):
+                metadata[child.name] = child.text.strip()
+
+        # Extract and flatten track points
+        track = {}
+        for trkpt in soup.find_all("trkpt"):
+            trkpt_data = {k: v for k, v in trkpt.attrs.items()}
+            for child in trkpt.find_all(recursive=False):
+                if child.name == "extensions":
+                    for ext in child.find_all():
+                        for sub in ext.find_all():
+                            flat_key = f"{child.name}_{ext.name}_{sub.name}".replace(":", "_")
+                            val = sub.text.strip()
+                            trkpt_data[flat_key.lower()] = float(val) if val.replace(".", "", 1).isdigit() else val
+                else:
+                    val = child.text.strip()
+                    trkpt_data[child.name] = float(val) if child.name == "ele" else val
+
+            # Convert time to 13-digit UTC timestamp
+            time_str = trkpt_data.get("time")
+            if time_str:
+                dt = DateTime.strptime(time_str, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+                utc_timestamp = int(dt.timestamp() * 1000)
+                trkpt_data["utc_timestamp"] = utc_timestamp
+                track[utc_timestamp] = trkpt_data  # Use int key
+
+        # Compose final JSON structure
+        gpx_json = {"header": header, "metadata": metadata, "track": track}
+
+        # Eventually Save to file
+        if f_output:
+            with f_output.open("w", encoding="utf-8") as f:
+                json.dump(gpx_json, f, indent=4, ensure_ascii=False)
+
+        return gpx_json
+
+    @staticmethod
+    def merge_gpx(
+        p_source: Union[str, Path], f_output: Union[str, Path], create_json: bool = True, overwrite: bool = True
+    ) -> Union[str, None]:
         """
         Merge multiple GPX files in a folder into a single GPX file.
 
         - Uses metadata from the file with the earliest <metadata><time>
         - Collects all <trkpt> segments and sorts them by <time>
-        - Saves the merged GPX to f_output
+        - Saves the merged GPX to f_output and if create_json is set, also create the
+          json respresentation
 
         Args:
             folder (Union[str, Path]): Folder containing GPX files.
@@ -269,8 +340,11 @@ class GeoLocation:
 
         # skip if merged path already exists, you need to manually delete it again if not present
         if f_output.is_file():
-            print(f"{C_T}File {C_F}[{f_output}]{C_T} already exists {C_0}")
-            return
+            if overwrite:
+                os.remove(str(f_output))
+            else:
+                print(f"{C_T}File {C_F}[{f_output}]{C_T} already exists {C_0}")
+                return
 
         gpx_files = sorted(p_source.glob("*.gpx"))
         if not gpx_files:
@@ -279,6 +353,8 @@ class GeoLocation:
 
         metadata_time_map = {}
         trkpt_elements = []
+
+        check_for_duplicates = True if len(gpx_files) > 1 else False
 
         for gpx_file in gpx_files:
             with gpx_file.open("r", encoding="utf-8") as f:
@@ -329,18 +405,38 @@ class GeoLocation:
         trk_tag.append(type_tag)
 
         trkseg_tag = soup_out.new_tag("trkseg")
+
+        seen_timestamps = set()
         for trkpt in trkpt_elements:
+            if check_for_duplicates:  # only necessary when merging multiple files
+                time_tag = trkpt.find("time")
+                if time_tag:
+                    try:
+                        timestamp = DateTime.fromisoformat(time_tag.text.replace("Z", "+00:00"))
+                        if timestamp in seen_timestamps:
+                            print(f"{C_W}Found duplicate timestamp in tracks {C_H}{timestamp}{C_0}")
+                            continue  # Skip duplicate
+                        seen_timestamps.add(timestamp)
+                    except Exception:
+                        pass  # If time is malformed, include it anyway
             trkseg_tag.append(trkpt)
+
         trk_tag.append(trkseg_tag)
         gpx_tag.append(trk_tag)
 
         # Save to file
         soup_str = soup_out.prettify()
         Persistence.save_txt(f_output, soup_str)
-        # with f_output.open("w", encoding="utf-8") as f:
-        #     f.write(str(soup_out))
 
         print(f"{C_T}Merged GPX saved to {C_H}{f_output}{C_0}")
+        if create_json:
+            f_output_json = f_output.parent.joinpath(f"{f_output.stem}.json")
+            _ = GeoLocation.create_dict_from_gpx(p_source=f_output, f_output=f_output_json)
+            print(f"{C_T}Merged GPX JSON saved to {C_H}{f_output_json}{C_0}")
+
+            # print(json.dumps(_, indent=4))
+            # GeoLocation.create_dict_from_gpx()
+            pass
         return str(f_output)
 
     @staticmethod
@@ -483,6 +579,7 @@ class GeoLocation:
         """
         Scans a folder for .gpx files and writes the selected filename to F_GPX_ENV.
         Deletes any existing F_GPX_ENV file before writing.
+
 
         Args:
             folder (Optional[Path]): Folder to scan. Defaults to current directory.
