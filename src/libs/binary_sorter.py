@@ -26,7 +26,7 @@ class BinarySorter:
 
         # get data from a dict
         if isinstance(items, List):
-            self._data = {i: data for i, data in enumerate(items, 1)}
+            self._data = {i: data for i, data in enumerate(items)}
         else:
             self._data = items
         self._create_index()
@@ -165,17 +165,29 @@ class BinarySorter:
         self._current_index = self._key_values.index(best_key)
         return self._index[best_key]
 
-    def get_data(self, index_value: float | int) -> Tuple[float | int, Dict | None]:
+    def get_data_by_key(self, key: Any) -> Dict | None:
         """return the value and the dict key from the data"""
-        index_key = None
-        data = None
         try:
-            index_key = self._index[index_value]
-            data = self._data.get(index_key)
-        except (IndexError, ValueError):
-            print(f"{C_E} Value [{index_value}] is is not an index value{C_0}")
+            return self._data[key]
+        except (IndexError, ValueError, KeyError):
+            # print(f"{C_E} Value [{key}] is is not an index value{C_0}")
             return None
-        return (index_key,data)
+
+    def get_data_by_value(self, value: float | int) -> Dict:
+        """does a search and returns a result dict containing search value, key and data"""
+        _value = value
+        _key = None
+        _data = None
+
+        try:
+            _key = self.search(_value)
+            _data = self.get_data_by_key(_key)
+            _return = _data.get(self._sort_key)
+            return {"input": _value, "return": _return, "key": _key, "data": _data, "field": self._sort_key}
+        except (IndexError, ValueError):
+            print(f"{C_E} Value [{_value}] couldn't be found in data in field [{self._sort_key}] or in Index {C_0}")
+            return None
+
 
 def run_test(sample_data, sequence, label, linear_range):
     """Testing the binary search performance for different use cases"""
@@ -188,17 +200,52 @@ def run_test(sample_data, sequence, label, linear_range):
     return s
 
 
-if __name__ == "__main__":
-    # sample_data = {f"id_{i}": {"score": i * 0.1} for i in range(10000)}
-    # seq1 = [i * 0.1 for i in range(10000)]
-    # seq2 = [i * 0.1 if i % 2 == 0 else 99.9 - i * 0.1 for i in range(10000)]
-    # s1 = run_test(sample_data, seq1, "Sequential (optimized)", 0)
-    # s2 = run_test(sample_data, seq2, "Alternating (reset-heavy)", 0)
-    # s3 = run_test(sample_data, seq1, "Sequential (optimized) linear", 50)
-    # s4 = run_test(sample_data, seq2, "Alternating (reset-heavy) lineat", 50)
+def test_get_data1():
+    sample = {
+        "alpha": {"score": 10},
+        "beta": {"score": 20},
+        "gamma": {"score": 30},
+    }
 
-    # # show runtimes for getting indices if entries are sorted vs unsorted
-    # print(s1)
-    # print(s2)
-    # print(s3)
-    # print(s4)
+    sorter = BinarySorter(sample, sort_key="score")
+    value = 21.0
+    key = sorter.search(value)
+    print(f"value {value} got key {key} ")
+    data = sorter.get_data_by_key(key)
+    print(f"data1 {data}")
+    data2 = sorter.get_data_by_value(14.0)
+    print(f"data1 {data2}")
+
+
+def test_get_data2():
+    sample = [
+        {"score": 10},
+        {"score": 20},
+        {"score": 30},
+    ]
+
+    sorter = BinarySorter(sample, sort_key="score")
+
+    data2 = sorter.get_data_by_value(30.0)
+    print(f"data2 {data2}")
+
+
+if __name__ == "__main__":
+    # test dict
+    test_get_data1()
+    # test list
+    test_get_data2()
+    if False:
+        sample_data = {f"id_{i}": {"score": i * 0.1} for i in range(10000)}
+        seq1 = [i * 0.1 for i in range(10000)]
+        seq2 = [i * 0.1 if i % 2 == 0 else 99.9 - i * 0.1 for i in range(10000)]
+        s1 = run_test(sample_data, seq1, "Sequential (optimized)", 0)
+        s2 = run_test(sample_data, seq2, "Alternating (reset-heavy)", 0)
+        s3 = run_test(sample_data, seq1, "Sequential (optimized) linear", 50)
+        s4 = run_test(sample_data, seq2, "Alternating (reset-heavy) lineat", 50)
+
+        # show runtimes for getting indices if entries are sorted vs unsorted
+        print(s1)
+        print(s2)
+        print(s3)
+        print(s4)
