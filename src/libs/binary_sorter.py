@@ -1,5 +1,6 @@
 """Binary Sort on Dicts"""
 
+import time
 from typing import Dict, List, Any
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
 
@@ -71,17 +72,25 @@ class BinarySorter:
             print(f"{C_E}Index is empty. Did you run _create_index()?{C_0}")
             return None
 
-        # Edge cases
-        if target_value <= self._key_values[0]:
+        # Edge cases: outside bounds
+        if target_value < self._key_values[0]:
             self._current_index = 0
             print(f"{C_W} Value [{target_value}] is below first element [{self._key_values[0]}]{C_0}")
             return None
-            # return self._index[self._key_values[0]]
-        elif target_value >= self._key_values[-1]:
+
+        if target_value > self._key_values[-1]:
             self._current_index = len(self._key_values) - 1
-            print(f"{C_W} Value [{target_value}] is above last element [{self._index[self._key_values[-1]]}]{C_0}")
+            print(f"{C_W} Value [{target_value}] is above last element [{self._key_values[-1]}]{C_0}")
             return None
-            # return self._index[self._key_values[-1]]
+
+        # Exact match at boundaries
+        if target_value == self._key_values[0]:
+            self._current_index = 0
+            return self._index[self._key_values[0]]
+
+        if target_value == self._key_values[-1]:
+            self._current_index = len(self._key_values) - 1
+            return self._index[self._key_values[-1]]
 
         # Determine search bounds
         last_index_value = self._current_index if self._current_index is not None else 0
@@ -114,27 +123,21 @@ class BinarySorter:
         return self._index[best_key]
 
 
-def main():
-    print(f"{C_H}Running BinarySorter demo...{C_0}")
-
-    # Sample data: keys are IDs, values are dicts with 'score'
-    sample_data = {
-        "A": {"score": 10},
-        "B": {"score": 20},
-        "C": {"score": 30},
-        "D": {"score": 40},
-        "E": {"score": 50},
-    }
-
+def run_test(sample_data, sequence, label):
     sorter = BinarySorter(sample_data, sort_key="score")
 
-    # Simulate increasing queries
-    test_values = [5.8, 15, 25.6, 80, 35, 45, 55, 20, 10]  # last two test the reset logic
+    start = time.time()
+    for val in sequence:
+        _ = sorter.search(val)
+    end = time.time()
 
-    for val in test_values:
-        result = sorter.search(val)
-        print(f"{C_T}Target: {val} → Nearest: {result}{C_0}")
+    print(f"⏱️ {label} runtime: {end - start:.6f} seconds")
 
 
 if __name__ == "__main__":
-    main()
+    sample_data = {f"id_{i}": {"score": i * 0.1} for i in range(1000)}
+    seq1 = [i * 0.1 for i in range(1000)]
+    seq2 = [i * 0.1 if i % 2 == 0 else 99.9 - i * 0.1 for i in range(1000)]
+
+    run_test(sample_data, seq1, "Sequential (optimized)")
+    run_test(sample_data, seq2, "Alternating (reset-heavy)")
