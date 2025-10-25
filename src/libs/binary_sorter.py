@@ -1,7 +1,7 @@
 """Binary Sort on Dicts"""
 
 import time
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
 
 
@@ -30,6 +30,11 @@ class BinarySorter:
         else:
             self._data = items
         self._create_index()
+        self._count = len(self._key_values)
+        # number of items for sequential search
+        self._index_range = max(1, ((sequential_search * self._count) // 100))
+        if sequential_search == 0:
+            self._index_range = 0
 
     def _create_index(self):
         """creates the sort index"""
@@ -50,7 +55,41 @@ class BinarySorter:
         self._index = dict(sorted(self._index.items()))
         self._key_values = list(self._index.keys())
 
-        pass
+    def _linear_vicinity_search(self, target_value: float | int) -> Any:
+        """
+        Attempts a linear search in the vicinity above the current index.
+
+        Parameters:
+            target_value (float | int): The value to search for.
+            window_percent (float): Fraction of total index to scan forward (e.g., 0.1 = 10%).
+
+        Returns:
+            Any: Matching value from self._index if found, else None.
+        """
+        if self._current_index is None:
+            return None
+
+        if self._index_range == 0:
+            return None
+
+        start_idx = self._current_index
+        end_idx = min(start_idx + self._index_range, self._count)
+
+        best_key = None
+        min_diff = float("inf")
+
+        for i in range(start_idx, end_idx):
+            key = self._key_values[i]
+            diff = abs(key - target_value)
+            if diff < min_diff:
+                min_diff = diff
+                best_key = key
+
+        if best_key is not None and min_diff < abs(self._key_values[start_idx] - target_value):
+            self._current_index = self._key_values.index(best_key)
+            return self._index[best_key]
+
+        return None
 
     def search(self, target_value: float | int) -> Any:
         """
@@ -94,8 +133,14 @@ class BinarySorter:
         last_index_value = self._current_index if self._current_index is not None else 0
         if target_value < self._key_values[last_index_value]:
             last_index_value = 0  # Reset if target is lower than last found
-        lower_index, upper_index = last_index_value, len(self._key_values) - 1
 
+        # Try linear vicinity search first
+        result = self._linear_vicinity_search(target_value)
+        if result is not None:
+            return result
+
+        # Fallback to binary search
+        lower_index, upper_index = last_index_value, len(self._key_values) - 1
         # Binary search with proximity tracking
         best_key = self._key_values[lower_index]
         min_diff = abs(best_key - target_value)
@@ -120,8 +165,20 @@ class BinarySorter:
         self._current_index = self._key_values.index(best_key)
         return self._index[best_key]
 
+    def get_data(self, index_value: float | int) -> Tuple[float | int, Dict | None]:
+        """return the value and the dict key from the data"""
+        index_key = None
+        data = None
+        try:
+            index_key = self._index[index_value]
+            data = self._data.get(index_key)
+        except (IndexError, ValueError):
+            print(f"{C_E} Value [{index_value}] is is not an index value{C_0}")
+            return None
+        return (index_key,data)
 
-def run_test(sample_data, sequence, label):
+def run_test(sample_data, sequence, label, linear_range):
+    """Testing the binary search performance for different use cases"""
     sorter = BinarySorter(sample_data, sort_key="score")
     start = time.time()
     for val in sequence:
@@ -132,12 +189,16 @@ def run_test(sample_data, sequence, label):
 
 
 if __name__ == "__main__":
-    sample_data = {f"id_{i}": {"score": i * 0.1} for i in range(10000)}
-    seq1 = [i * 0.1 for i in range(10000)]
-    seq2 = [i * 0.1 if i % 2 == 0 else 99.9 - i * 0.1 for i in range(10000)]
+    # sample_data = {f"id_{i}": {"score": i * 0.1} for i in range(10000)}
+    # seq1 = [i * 0.1 for i in range(10000)]
+    # seq2 = [i * 0.1 if i % 2 == 0 else 99.9 - i * 0.1 for i in range(10000)]
+    # s1 = run_test(sample_data, seq1, "Sequential (optimized)", 0)
+    # s2 = run_test(sample_data, seq2, "Alternating (reset-heavy)", 0)
+    # s3 = run_test(sample_data, seq1, "Sequential (optimized) linear", 50)
+    # s4 = run_test(sample_data, seq2, "Alternating (reset-heavy) lineat", 50)
 
-    s1 = run_test(sample_data, seq1, "Sequential (optimized)")
-    s2 = run_test(sample_data, seq2, "Alternating (reset-heavy)")
-    # show runtimes for getting indices if entries are sorted vs unsorted
-    print(s1)
-    print(s2)
+    # # show runtimes for getting indices if entries are sorted vs unsorted
+    # print(s1)
+    # print(s2)
+    # print(s3)
+    # print(s4)
