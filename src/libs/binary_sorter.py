@@ -9,10 +9,7 @@ class BinarySorter:
     """Class for Binary Sorting, right now for numerical values only"""
 
     def __init__(
-        self,
-        items: Dict | List,
-        sort_key: str = None,
-        key_as_sortvalue: bool = False,
+        self, items: Dict | List, sort_key: str = None, key_as_sortvalue: bool = False, sequential_search: int = 0
     ):
         """Constructor"""
         self._original: Dict | List = items
@@ -24,7 +21,8 @@ class BinarySorter:
         self._key_as_sortvalue: bool = key_as_sortvalue
         self._data: Dict[Any, Any] = {}
         self._key_values: list = None
-        self._current_index = None
+        self._current_index: float | int = None
+        self._sequential_search: int = sequential_search
 
         # get data from a dict
         if isinstance(items, List):
@@ -44,7 +42,7 @@ class BinarySorter:
             else:
                 _index_value = v.get(self._sort_key)
 
-            if not _index_value:
+            if _index_value is None:
                 print(f"{C_E}No sort key [{self._sort_key}] found in [{k}/{v}] {C_0}")
                 continue
             self._index[_index_value] = _index_key
@@ -125,19 +123,21 @@ class BinarySorter:
 
 def run_test(sample_data, sequence, label):
     sorter = BinarySorter(sample_data, sort_key="score")
-
     start = time.time()
     for val in sequence:
         _ = sorter.search(val)
     end = time.time()
-
-    print(f"⏱️ {label} runtime: {end - start:.6f} seconds")
+    s = f"⏱️ {label} runtime: {end - start:.6f} seconds"
+    return s
 
 
 if __name__ == "__main__":
-    sample_data = {f"id_{i}": {"score": i * 0.1} for i in range(1000)}
-    seq1 = [i * 0.1 for i in range(1000)]
-    seq2 = [i * 0.1 if i % 2 == 0 else 99.9 - i * 0.1 for i in range(1000)]
+    sample_data = {f"id_{i}": {"score": i * 0.1} for i in range(10000)}
+    seq1 = [i * 0.1 for i in range(10000)]
+    seq2 = [i * 0.1 if i % 2 == 0 else 99.9 - i * 0.1 for i in range(10000)]
 
-    run_test(sample_data, seq1, "Sequential (optimized)")
-    run_test(sample_data, seq2, "Alternating (reset-heavy)")
+    s1 = run_test(sample_data, seq1, "Sequential (optimized)")
+    s2 = run_test(sample_data, seq2, "Alternating (reset-heavy)")
+    # show runtimes for getting indices if entries are sorted vs unsorted
+    print(s1)
+    print(s2)
