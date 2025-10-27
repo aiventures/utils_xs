@@ -284,25 +284,7 @@ CMD_EXIFTOOL_CREATE_WAYPOINTS = [CMD_EXIFTOOL, "-fileOrder", "gpsdatetime", "-ex
 P_PHOTO_DUMP_DEFAULT = Path(MY_P_PHOTO_DUMP)
 P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
 
-# Timestamp files to calculate offset
-# T_CAMERA - T_GPS = T_OFFSET
-# default image for image containing camera timestamp
-F_TIMESTAMP_IMG_DEFAULT = "gps.jpg"
-F_TIMESTAMP_IMG_ENV = "timestamp_img.env"
-F_TIMESTAMP_GPS = "timestamp_gps.json"
-F_TIMESTAMP_CAMERA = "timestamp_camera.json"
-F_OFFSET_ENV = "offset.env"
-F_OFFSET_SECS_ENV = "offset_sec.env"
-F_OSM = "osm.json"
-F_OSM_ENV = "osm.env"
-F_GPX_ENV = "gpx_merged.env"
-F_GPX_MERGED = "gpx_merged.gpx"
-F_METADATA_EXIF = "metadata_exif.json"
-F_METADATA_EXIF_ENV = "metadata_exif.env"
-F_METADATA = "metadata.json"
-F_METADATA_ENV = "metadata.env"
 
-F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
 # Files To Be Used To Be added to the central F_METADATA FILE
 # General approach is to reference file in env files so to be flexible w.r.t. naming
 # CONFIG_FILES
@@ -321,55 +303,98 @@ OFFSET_SECS = "offset_secs"
 OFFSET_STR = "offset_str"
 OFFSET_CAM = "offset_cam"
 OFFSET_GPS = "offset_gps"
-
 LAT_LON = "lat_lon"
 LAT_LON_ORIGIN = "lat_lon_origin"
 GPS_TRACK = "gps_track"
 GPS_METADATA = "gps_metadata"
 TIMESTAMP_UTC = "timestamp_utc"
 
-CONFIG_F_TIMESTAMP_IMG = "f_timestamp_img"
-CONFIG_F_OFFSET = "f_offset"
-CONFIG_F_OFFSET_SECS = "f_offset_secs"
-CONFIG_F_OFFSET_CAMERA = "f_offset_camera"
-CONFIG_F_OFFSET_GPS = "f_offset_gps"
-CONFIG_F_GPX_MERGED = "f_gpx_merged"
-CONFIG_F_GPX_MERGED_JSON = "f_gpx_merged_json"
-CONFIG_F_OSM = "f_osm"
-CONFIG_F_METADATA_EXIF = "f_metadata_exif"
-CONFIG_F_METADATA = "f_metadata"
 
-# TIMESTAMP_CAM = "timestamp_camera"
-# TIMESTAMP_GPS = "timestamp_camera"
+# All Metadata (the json template below)
+CONFIG_F_METADATA_ENV = "config_f_metadata_env"
+CONFIG_F_METADATA = "config_f_metadata"
+F_METADATA = "metadata.json"
+F_METADATA_ENV = "metadata.env"
+
+# Image Metadata
+CONFIG_F_METADATA_EXIF_ENV = "config_f_metadata_exif_env"
+F_METADATA_EXIF_ENV = "metadata_exif.env"
+CONFIG_F_METADATA_EXIF = "config_f_metadata_exif"
+F_METADATA_EXIF = "metadata_exif.json"
+
+# Image containing the timestamp and the GPS Image
+# Timestamp files to calculate offset
+# T_CAMERA - T_GPS = T_OFFSET
+# default image for image containing camera timestamp
+F_TIMESTAMP_IMG_DEFAULT = "gps.jpg"
+
+CONFIG_F_TIMESTAMP_IMG_ENV = "f_timestamp_img_env"
+CONFIG_F_TIMESTAMP_IMG = "f_timestamp_img"
+CONFIG_F_OFFSET_ENV = "config_f_offset_env"
+CONFIG_F_OFFSET_SECS_ENV = "config_f_offset_secs_env"
+CONFIG_OFFSET_SECS = "config_offset_secs"
+CONFIG_OFFSET_STR = "config_offset_str"
+F_OFFSET_ENV = "offset.env"
+F_OFFSET_SECS_ENV = "offset_sec.env"
+CONFIG_F_TIMESTAMP_CAMERA_ENV = "config_f_timestamp_camera_env"
+CONFIG_F_TIMESTAMP_GPS_ENV = "config_f_timestamp_gps_env"
+CONFIG_F_TIMESTAMP_CAMERA = "config_f_timestamp_camera"
+CONFIG_F_TIMESTAMP_GPS = "config_f_timestamp_gps"
+CONFIG_TIMESTAMP_CAMERA = "config_timestamp_camera"
+CONFIG_TIMESTAMP_GPS = "config_timestamp_gps"
+F_TIMESTAMP_IMG_ENV = "timestamp_img.env"
+F_TIMESTAMP_GPS = "timestamp_gps.json"
+F_TIMESTAMP_CAMERA = "timestamp_camera.json"
+
+# OpenStretMap Configuration
+CONFIG_F_OSM_ENV = "config_f_osm_env"
+CONFIG_F_OSM = "config_f_osm"
+F_OSM_ENV = "osm.env"  # contains name of osm config file
+F_OSM = "osm.json"
+
+# Geotracker GPX DATA
+CONFIG_F_GPX_MERGED_ENV = "config_f_gpx_merged_env"
+CONFIG_F_GPX_MERGED = "config_f_gpx_merged"
+F_GPX_MERGED_ENV = "gpx_merged.env"
+F_GPX_MERGED = "gpx_merged.gpx"
+
+
+F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
+
+
 # general setup of the metadata json containin all relevant information
 CONFIG_METADATA = {
     DATETIME: None,  # creation date of this file
     TIMESTAMP_UTC: None,  # creation date timestamp
-    FILES_ENV: {  # indirection: insread of using file names directly, use an indirection via env files
-        F_TIMESTAMP_IMG_ENV: None,  # file ref to image of the GPTRACKER
-        CONFIG_F_OFFSET_CAMERA: None,  # file ref to camera offset dates
-        CONFIG_F_OFFSET_GPS: None,  # file ref to gps offset dates
-        F_OFFSET_ENV: None,  # file ref to image offset in form /-+hh:mm:ss
-        F_OFFSET_SECS_ENV: None,  # file ref to image offset in seconds
-        F_OSM_ENV: None,  # file ref to selected osm info metadata
-        F_METADATA_EXIF_ENV: None,  # file ref to selected EXIF metadata
-        F_METADATA_ENV: None,  # file ref to metadata collection (=this template)
+    FILES_ENV: {  # indirection/hardwired: insread of using file names directly, use an indirection via env
+        CONFIG_F_METADATA_ENV: F_METADATA_ENV,
+        CONFIG_F_METADATA_EXIF_ENV: F_METADATA_EXIF_ENV,
+        CONFIG_F_TIMESTAMP_IMG_ENV: F_TIMESTAMP_IMG_ENV,  # file ref to image of the GPTRACKER
+        CONFIG_F_OFFSET_ENV: F_OFFSET_ENV,  # file ref to image offset in form /-+hh:mm:ss
+        CONFIG_F_OFFSET_SECS_ENV: F_OFFSET_SECS_ENV,  # file ref to image offset in seconds
+        CONFIG_F_TIMESTAMP_CAMERA_ENV: F_TIMESTAMP_CAMERA,  # file ref to camera offset dates
+        CONFIG_F_TIMESTAMP_GPS_ENV: F_TIMESTAMP_GPS,  # file ref to gps offset dates
+        CONFIG_F_OSM_ENV: F_OSM_ENV,
+        CONFIG_F_GPX_MERGED_ENV: F_GPX_MERGED_ENV,
+        # CONFIG_F_METADATA_ENV: None,  # file ref to metadata collection (=this template)
     },
+    # F_OFFSET_ENV = "offset.env"
+    # F_OFFSET_SECS_ENV = "offset_sec.env"
+    # if files are found then the None will be replaced by real path
     FILES: {
-        CONFIG_F_TIMESTAMP_IMG: None,  # GPS TRACKER Image
-        CONFIG_F_OFFSET: None,  # offset in form /-+hh:mm:ss
-        CONFIG_F_OFFSET_SECS: None,  # offset in seconds
-        CONFIG_F_OSM: None,  # Selected OSM internet link
-        CONFIG_F_METADATA_EXIF: None,  # EXIF metadata dump from Exiftool
-        CONFIG_F_METADATA: None,  # All metadata in one file
-        CONFIG_F_GPX_MERGED: None,  # Merged GPX file
-        CONFIG_F_GPX_MERGED_JSON: None,  # Merged GPX File as JSON
+        CONFIG_F_METADATA: None,  # All Metadata In One File (= This File)
+        CONFIG_F_METADATA_EXIF: None,  # Image Metadata
+        CONFIG_F_TIMESTAMP_IMG: None,  # GPS TRACKER Image (from CONFIG_F_TIMESTAMP_IMG_ENV)
+        CONFIG_F_TIMESTAMP_CAMERA: None,
+        CONFIG_F_TIMESTAMP_GPS: None,
+        CONFIG_F_OSM: None,  # OSM URL Link
+        CONFIG_F_GPX_MERGED: None,  # Link to merged GPX Files
     },
     OFFSET: {
-        OFFSET_SECS: None,  # absolute offset T_GPS+T_OFFSET = T_CAM in seconds
-        OFFSET_STR: None,  # Offset as -+hh:mm:ss
-        OFFSET_CAM: {},  # Offset JSON for Camera
-        OFFSET_GPS: {},  # Offset JSON for GPS
+        CONFIG_OFFSET_SECS: 0,  # absolute offset T_GPS+T_OFFSET = T_CAM in seconds
+        CONFIG_OFFSET_STR: "+00:00:00",  # Offset as -+hh:mm:ss
+        CONFIG_TIMESTAMP_CAMERA: {},  # Offset JSON for Camera
+        CONFIG_TIMESTAMP_GPS: {},  # Offset JSON for GPS
     },
     METADATA_EXIF: {},  # Copied from F_METADATA_EXIF / but with FILENAME as key
     IMAGES: {},  # metadata for each file, structure see below
@@ -952,7 +977,7 @@ class ImageOrganizer:
         # create the merged gpx
         _ = GeoLocation.merge_gpx(p_work, F_GPX_MERGED)
         # store the file name of the merged gpx into an env file
-        Persistence.save_txt(p_work.joinpath(F_GPX_ENV), str(p_work.joinpath(F_GPX_MERGED)))
+        Persistence.save_txt(p_work.joinpath(F_GPX_MERGED_ENV), str(p_work.joinpath(F_GPX_MERGED)))
         # 2. Select Reference File and extract timestanp of camera
         print("HUGO extract_image_timestamp")
         timstamp_dict_camera = ImageOrganizer.extract_image_timestamp(p_source)
@@ -1103,7 +1128,7 @@ class ImageOrganizer:
         # env files that can be deleted right away
         delete_files = [F_TIMESTAMP_IMG_ENV, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
         # env files that contain references to generated files
-        delete_files_with_ref = [F_GPX_ENV, F_METADATA_EXIF_ENV, F_METADATA_ENV]
+        delete_files_with_ref = [F_GPX_MERGED_ENV, F_METADATA_EXIF_ENV, F_METADATA_ENV]
         # use current path or input path
         p_work = path if path.is_dir() else Path().resolve()
 
@@ -1281,7 +1306,7 @@ class ImageOrganizer:
         if f_gps.is_file():
             return f_gps
         # 1. Check if there is a merged file already
-        f_gps_merged = p_source.joinpath(F_GPX_ENV)
+        f_gps_merged = p_source.joinpath(F_GPX_MERGED_ENV)
         if f_gps_merged.is_file():
             return f_gps_merged
         # 2. Merge Any GPX Files into the standard one
