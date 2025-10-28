@@ -173,6 +173,7 @@ import datetime
 from datetime import datetime as DateTime, timezone
 import traceback
 from bs4 import BeautifulSoup, Tag
+from copy import deepcopy
 
 
 import shutil
@@ -358,9 +359,7 @@ CONFIG_F_GPX_MERGED = "config_f_gpx_merged"
 F_GPX_MERGED_ENV = "gpx_merged.env"
 F_GPX_MERGED = "gpx_merged.gpx"
 
-
 F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
-
 
 # general setup of the metadata json containin all relevant information
 CONFIG_METADATA = {
@@ -370,13 +369,12 @@ CONFIG_METADATA = {
         CONFIG_F_METADATA_ENV: F_METADATA_ENV,
         CONFIG_F_METADATA_EXIF_ENV: F_METADATA_EXIF_ENV,
         CONFIG_F_TIMESTAMP_IMG_ENV: F_TIMESTAMP_IMG_ENV,  # file ref to image of the GPTRACKER
-        CONFIG_F_OFFSET_ENV: F_OFFSET_ENV,  # file ref to image offset in form /-+hh:mm:ss
-        CONFIG_F_OFFSET_SECS_ENV: F_OFFSET_SECS_ENV,  # file ref to image offset in seconds
-        CONFIG_F_TIMESTAMP_CAMERA_ENV: F_TIMESTAMP_CAMERA,  # file ref to camera offset dates
-        CONFIG_F_TIMESTAMP_GPS_ENV: F_TIMESTAMP_GPS,  # file ref to gps offset dates
         CONFIG_F_OSM_ENV: F_OSM_ENV,
         CONFIG_F_GPX_MERGED_ENV: F_GPX_MERGED_ENV,
-        # CONFIG_F_METADATA_ENV: None,  # file ref to metadata collection (=this template)
+        CONFIG_F_TIMESTAMP_CAMERA_ENV: F_TIMESTAMP_CAMERA,  # file ref to camera offset dates
+        CONFIG_F_TIMESTAMP_GPS_ENV: F_TIMESTAMP_GPS,  # file ref to gps offset dates
+        CONFIG_F_OFFSET_ENV: F_OFFSET_ENV,  # file ref to image offset in form /-+hh:mm:ss
+        CONFIG_F_OFFSET_SECS_ENV: F_OFFSET_SECS_ENV,  # file ref to image offset in seconds
     },
     # F_OFFSET_ENV = "offset.env"
     # F_OFFSET_SECS_ENV = "offset_sec.env"
@@ -391,15 +389,15 @@ CONFIG_METADATA = {
         CONFIG_F_GPX_MERGED: None,  # Link to merged GPX Files
     },
     OFFSET: {
-        CONFIG_OFFSET_SECS: 0,  # absolute offset T_GPS+T_OFFSET = T_CAM in seconds
         CONFIG_OFFSET_STR: "+00:00:00",  # Offset as -+hh:mm:ss
+        CONFIG_OFFSET_SECS: 0,  # absolute offset T_GPS+T_OFFSET = T_CAM in seconds
         CONFIG_TIMESTAMP_CAMERA: {},  # Offset JSON for Camera
         CONFIG_TIMESTAMP_GPS: {},  # Offset JSON for GPS
     },
     METADATA_EXIF: {},  # Copied from F_METADATA_EXIF / but with FILENAME as key
     IMAGES: {},  # metadata for each file, structure see below
     METADATA_OSM: {},  # Geo Metadata retrieved via EXIFTOOL and copied from F_OSM_INFO
-    GPS_TRACK: {},  # GPS Track, copy of  F_GPX_MERGED_JSON
+    GPS_TRACK: {},  # GPS Track, copy of F_GPX_MERGED_JSON
 }
 
 IMAGE_METADATA = {  # Blueprint for each image
@@ -870,6 +868,60 @@ class GeoLocation:
 
 class ImageOrganizer:
     """Class to process image metadata"""
+
+    @staticmethod
+    def merge_metadata(filepath: Optional[Path] = None) -> Dict:
+        """Reads all metadata and writes them to a merged JSON.
+        General Idea: Read available evn files from FILES_ENV
+        and transfer the data to FILES or other segments of the file,
+        if present
+        """
+        config_metadata = deepcopy(CONFIG_METADATA)
+        timestamp = DateTime.now()
+        timestamp_utc = int(timestamp.replace(tzinfo=timezone.utc).timestamp())
+        config_metadata[DATETIME] = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        config_metadata[TIMESTAMP_UTC] = timestamp_utc
+        files_env = config_metadata[FILES_ENV]
+        files = config_metadata[FILES]
+        offset = config_metadata[OFFSET]
+        metadata_exif = config_metadata[METADATA_EXIF]
+        images = config_metadata[IMAGES]
+        metadata_osm = config_metadata[METADATA_OSM]
+        gps_track = config_metadata[GPS_TRACK]
+        # mapping the env file contents as refs to the values if these files are present
+        env_fileref_map = {
+            files_env[CONFIG_F_METADATA_ENV]: files[CONFIG_F_METADATA],
+            files_env[CONFIG_F_METADATA_EXIF_ENV]: files[CONFIG_F_METADATA_EXIF],
+            files_env[CONFIG_F_TIMESTAMP_IMG_ENV]: files[CONFIG_F_TIMESTAMP_IMG],
+            files_env[CONFIG_F_OSM_ENV]: files[CONFIG_F_OSM],
+            files_env[CONFIG_F_GPX_MERGED_ENV]: files[CONFIG_F_GPX_MERGED],
+        }
+        # copying the file names if they are present (without indirection)
+        env_file_map = {
+            files_env[CONFIG_F_TIMESTAMP_CAMERA_ENV]: files[CONFIG_F_TIMESTAMP_CAMERA],
+            files_env[CONFIG_F_TIMESTAMP_GPS_ENV]: files[CONFIG_F_TIMESTAMP_GPS],
+        }
+        # mapping the values in the env files to fields
+        env_file_value_map = {
+            files_env[CONFIG_F_OFFSET_ENV]: offset[CONFIG_OFFSET_STR],
+            files_env[CONFIG_F_OFFSET_SECS_ENV]: offset[CONFIG_OFFSET_SECS],
+        }
+        # mapping the file contents to the value fields
+        # CONFIG_F_METADATA is an exception as it will be created here
+        file_value_map = {
+            CONFIG_F_METADATA_EXIF: metadata_exif,
+            CONFIG_F_TIMESTAMP_CAMERA: offset[CONFIG_TIMESTAMP_CAMERA],
+            CONFIG_F_TIMESTAMP_GPS: offset[CONFIG_TIMESTAMP_GPS],
+            CONFIG_F_OSM: metadata_osm,
+            CONFIG_F_GPX_MERGED: gps_track,
+        }
+        # special case: convert EXIF METADATA into a dict with filename as key
+        # TODO
+        # Now Loop over the transformed dict and for each file create the IMAGE_METADATA part
+        # TODO
+        # determine LAT_LON from from GPX Track, if not there create it from OSM Link, or leave it as none
+
+        return config_metadata
 
     @staticmethod
     def generate_timestamp_dict(source: Union[str, DateTime], filepath: Optional[Path] = None) -> Dict[str, Any]:
