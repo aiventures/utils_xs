@@ -111,7 +111,7 @@ class CmdRunner:
     """Running Commands"""
 
     @staticmethod
-    def run_cmd_and_stream(cmd: List[str], output_path: Path) -> list:
+    def run_cmd_and_stream(cmd: List[str], output_file: Path) -> list:
         """
         Run exiftool with the given command and stream stderr to console.
 
@@ -124,7 +124,7 @@ class CmdRunner:
         """
         out = []
         try:
-            with output_path.open("w", encoding="utf-8") as outfile:
+            with output_file.open("w", encoding="utf-8") as outfile:
                 process = subprocess.Popen(cmd, stdout=outfile, stderr=subprocess.PIPE, text=True)
                 for line in process.stderr:
                     out.append(line.strip())
@@ -255,7 +255,7 @@ class Persistence:
             print(f"{C_E}Failed to save file {_filepath}: {e}{C_0}")
 
     @staticmethod
-    def save_json(filepath: Path, data: Dict[str, Any]) -> None:
+    def save_json(filepath: Path | str, data: Dict[str, Any]) -> None:
         """
         Save a dictionary to JSON, converting datetime objects to ISO strings.
 
@@ -263,13 +263,14 @@ class Persistence:
             filepath (Path): Path to save the JSON file.
             data (Dict[str, Any]): Data to save.
         """
+        _filepath = Path(filepath)
 
         def default_serializer(obj):
             if isinstance(obj, DateTime):
                 return obj.isoformat()
             return str(obj)
 
-        with filepath.open("w", encoding="utf-8") as f:
+        with _filepath.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False, default=default_serializer)
 
     @staticmethod

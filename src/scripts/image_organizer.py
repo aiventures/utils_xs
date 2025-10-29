@@ -211,7 +211,17 @@ CMD_EXIFTOOL_GET_DATE = [CMD_EXIFTOOL, "-SubSecDateTimeOriginal", "-b"]
 
 # 2. EXIFTOOL command to export metadata
 # exiftool -r -g -c %.6f -progress 50 -json -<extensions> ....
-CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
+CMD_EXIFTOOL_EXPORT_METADATA_RECURSIVE = [
+    CMD_EXIFTOOL,
+    "-r",
+    "-g",
+    "-c",
+    "'%.6f'",
+    "-progress50",
+    "-json",
+] + SUFFIX_ARGS
+CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
+
 
 # 3. EXIFTOOL command to geotag images based on a gps track
 # https://exiftool.org/geotag.html
@@ -876,13 +886,20 @@ class ImageOrganizer:
         and transfer the data to FILES or other segments of the file,
         if present
         """
+        _path = Path(filepath)
+        if _path is None:
+            _path = Path.cwd()
+        print(f"\n{C_T}### Merge Image Metadata in {C_F}[{_path}]{C_0}")
+
         config_metadata = deepcopy(CONFIG_METADATA)
+
         timestamp = DateTime.now()
         timestamp_utc = int(timestamp.replace(tzinfo=timezone.utc).timestamp())
         config_metadata[DATETIME] = timestamp.strftime("%Y-%m-%d %H:%M:%S")
         config_metadata[TIMESTAMP_UTC] = timestamp_utc
         files_env = config_metadata[FILES_ENV]
         files = config_metadata[FILES]
+        files[CONFIG_F_METADATA] = os.path.join(_path, F_METADATA)
         offset = config_metadata[OFFSET]
         metadata_exif = config_metadata[METADATA_EXIF]
         images = config_metadata[IMAGES]
@@ -890,16 +907,16 @@ class ImageOrganizer:
         gps_track = config_metadata[GPS_TRACK]
         # mapping the env file contents as refs to the values if these files are present
         env_fileref_map = {
-            files_env[CONFIG_F_METADATA_ENV]: files[CONFIG_F_METADATA],
-            files_env[CONFIG_F_METADATA_EXIF_ENV]: files[CONFIG_F_METADATA_EXIF],
-            files_env[CONFIG_F_TIMESTAMP_IMG_ENV]: files[CONFIG_F_TIMESTAMP_IMG],
-            files_env[CONFIG_F_OSM_ENV]: files[CONFIG_F_OSM],
-            files_env[CONFIG_F_GPX_MERGED_ENV]: files[CONFIG_F_GPX_MERGED],
+            files_env[CONFIG_F_METADATA_ENV]: CONFIG_F_METADATA,
+            files_env[CONFIG_F_METADATA_EXIF_ENV]: CONFIG_F_METADATA_EXIF,
+            files_env[CONFIG_F_TIMESTAMP_IMG_ENV]: CONFIG_F_TIMESTAMP_IMG,
+            files_env[CONFIG_F_OSM_ENV]: CONFIG_F_OSM,
+            files_env[CONFIG_F_GPX_MERGED_ENV]: CONFIG_F_GPX_MERGED,
         }
         # copying the file names if they are present (without indirection)
         env_file_map = {
-            files_env[CONFIG_F_TIMESTAMP_CAMERA_ENV]: files[CONFIG_F_TIMESTAMP_CAMERA],
-            files_env[CONFIG_F_TIMESTAMP_GPS_ENV]: files[CONFIG_F_TIMESTAMP_GPS],
+            files_env[CONFIG_F_TIMESTAMP_CAMERA_ENV]: CONFIG_F_TIMESTAMP_CAMERA,
+            files_env[CONFIG_F_TIMESTAMP_GPS_ENV]: CONFIG_F_TIMESTAMP_GPS,
         }
         # mapping the values in the env files to fields
         env_file_value_map = {
@@ -915,11 +932,40 @@ class ImageOrganizer:
             CONFIG_F_OSM: metadata_osm,
             CONFIG_F_GPX_MERGED: gps_track,
         }
+        # Now populate the metadata
+
+        # create the file references
+        for env_ref, file_ref in env_fileref_map.items():
+            f_env = _path.joinpath(env_ref)
+            # print(f_env)
+            if not f_env.is_file():
+                continue
+            env_file_ref = None
+            try:
+                env_file_ref = Persistence.read_txt_file(f_env)[0].strip()
+            except (IndexError, KeyError):
+                print(f"{C_E}🚨 Couldn't read file ref {C_F}[{f_env}]{C_0}")
+                continue
+            if not os.path.isfile(env_file_ref):
+                continue
+            # assign value to target
+            print(f"{C_H}Assigned [{file_ref}]: {C_F}[{env_file_ref}]{C_0}")
+            files[file_ref] = os.path.abspath(env_file_ref)
+
+        # create the file refs for files with hardcoded names
+        for env_ref, file_ref in env_file_map.items():
+            f_env = _path.joinpath(env_ref)
+            if not f_env.is_file():
+                continue
+            files[file_ref] = f_env
+
         # special case: convert EXIF METADATA into a dict with filename as key
         # TODO
         # Now Loop over the transformed dict and for each file create the IMAGE_METADATA part
         # TODO
         # determine LAT_LON from from GPX Track, if not there create it from OSM Link, or leave it as none
+
+        Persistence.save_json(files[CONFIG_F_METADATA], config_metadata)
 
         return config_metadata
 
@@ -971,13 +1017,14 @@ class ImageOrganizer:
         return f"-geosync={t_offset}"
 
     @staticmethod
-    def get_exiftool_cmd_export_meta_recursive(input_folder: Path) -> list:
+    def get_exiftool_cmd_export_meta(input_folder: Path, recursive: bool = True) -> list:
         """creates the exiftool command to export image data as json"""
 
         # command to export all exifdata in groups as json for given suffixes
         # progress is shown every 50 images
         # the c command is to format gps coordinates as decimals
-        exif_cmd = CMD_EXIFTOOL_EXPORT_METADATA.copy()
+        exiftool_cmd = CMD_EXIFTOOL_EXPORT_METADATA_RECURSIVE if recursive else CMD_EXIFTOOL_EXPORT_METADATA
+        exif_cmd = exiftool_cmd.copy()
         exif_cmd.append(str(input_folder))
         return exif_cmd
 
@@ -1024,6 +1071,13 @@ class ImageOrganizer:
         p_work = p_source if p_source.is_dir() else Path().resolve()
         # 0. Delete any temporary files
         ImageOrganizer.cleanup_env_files(p_source, delete_generated_files=True)
+        # Create the EXIF metadata
+        cmd = ImageOrganizer.get_exiftool_cmd_export_meta(p_work, recursive=False)
+        print("HUGO create Metadata:", cmd)
+        f_metadata_exif = p_work.joinpath(F_METADATA_EXIF)
+        _ = CmdRunner.run_cmd_and_stream(cmd, f_metadata_exif)
+        Persistence.save_txt(p_work / F_METADATA_EXIF_ENV, str(f_metadata_exif))
+
         # 1. Create Merged GPS, if not already present
         print("HUGO merge_gpx")
         # create the merged gpx
@@ -1038,10 +1092,12 @@ class ImageOrganizer:
         time_offset = ImageOrganizer.calculate_time_offset(p_work, show_gps_image)
         # 4. Extract the OSM Link as default GPS Coordinates
         print("HUGO get_openstreetmap_coordinates_from_folder")
-        # create a dict with all geo info metadata from osm link
+        # 5. create a dict with all geo info metadata from osm link
         f_osm_info = F_OSM
         _ = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, p_work)
         Persistence.save_txt(p_work.joinpath(F_OSM_ENV), str(p_work.joinpath(f_osm_info)))
+        # 6. Create a metadata json containing everything
+        ImageOrganizer.merge_metadata(p_work)
 
     @staticmethod
     def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
@@ -1407,7 +1463,7 @@ class ImageOrganizer:
 
         output_path = p_source / f_metadata_exif
         # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
-        cmd = ImageOrganizer.get_exiftool_cmd_export_meta_recursive(p_source)
+        cmd = ImageOrganizer.get_exiftool_cmd_export_meta(p_source)
 
         cmd_output = CmdRunner.run_cmd_and_stream(cmd, output_path)
         if cmd_output:
@@ -1523,7 +1579,7 @@ class ImageOrganizer:
 
             print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
             # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
-            cmd = ImageOrganizer.get_exiftool_cmd_export_meta_recursive(folder)
+            cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder)
             cmd_output = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
             status = "✅ Success" if cmd_output else "❌ Failed"
             summary.append({"folder": folder.name, "file_count": file_count, "status": status})
@@ -1683,7 +1739,7 @@ class ImageOrganizer:
                 print(f"\n{C_T}### Writing Metadata: {C_P}{folder_path}{C_T} ---")
                 print(f"Found {C_I}{file_count}{C_T} files. Running exiftool...{C_0}")
                 # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
-                cmd = ImageOrganizer.get_exiftool_cmd_export_meta_recursive(folder_path)
+                cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder_path)
                 cmd_output = CmdRunner.run_cmd_and_stream(cmd, f_metadata)
                 if not cmd_output:
                     print(f"{C_E}🚨 Exiftool failed in folder {folder_path}{C_0}")
