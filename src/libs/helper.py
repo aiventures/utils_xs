@@ -213,7 +213,7 @@ class Persistence:
         return lines
 
     @staticmethod
-    def read_json(filepath: Path) -> Union[Dict[str, Any], List[Any]]:
+    def read_json(filepath: Path | str) -> Union[Dict[str, Any], List[Any]]:
         """
         Read a JSON file from a given filepath and return its content.
 
@@ -223,11 +223,12 @@ class Persistence:
         Returns:
             Union[Dict[str, Any], List[Any]]: Parsed JSON data as a dictionary or list.
         """
+        _filepath = Path(filepath)
         try:
-            with filepath.open("r", encoding="utf-8") as f:
+            with _filepath.open("r", encoding="utf-8") as f:
                 return json.load(f)
-        except (TypeError, JSONDecodeError) as _:
-            print(f"{C_E}Couldn't read [{filepath}]")
+        except (TypeError, JSONDecodeError) as e:
+            print(f"{C_E}Couldn't read [{_filepath}], {e}")
             return {}
 
     @staticmethod

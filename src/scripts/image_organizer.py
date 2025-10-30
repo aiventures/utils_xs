@@ -322,15 +322,15 @@ TIMESTAMP_UTC = "timestamp_utc"
 
 
 # All Metadata (the json template below)
-CONFIG_F_METADATA_ENV = "config_f_metadata_env"
-CONFIG_F_METADATA = "config_f_metadata"
+CONFIG_F_METADATA_ENV = "f_metadata_env"
+CONFIG_F_METADATA = "f_metadata"
 F_METADATA = "metadata.json"
 F_METADATA_ENV = "metadata.env"
 
 # Image Metadata
-CONFIG_F_METADATA_EXIF_ENV = "config_f_metadata_exif_env"
+CONFIG_F_METADATA_EXIF_ENV = "f_metadata_exif_env"
 F_METADATA_EXIF_ENV = "metadata_exif.env"
-CONFIG_F_METADATA_EXIF = "config_f_metadata_exif"
+CONFIG_F_METADATA_EXIF = "f_metadata_exif"
 F_METADATA_EXIF = "metadata_exif.json"
 
 # Image containing the timestamp and the GPS Image
@@ -341,33 +341,35 @@ F_TIMESTAMP_IMG_DEFAULT = "gps.jpg"
 
 CONFIG_F_TIMESTAMP_IMG_ENV = "f_timestamp_img_env"
 CONFIG_F_TIMESTAMP_IMG = "f_timestamp_img"
-CONFIG_F_OFFSET_ENV = "config_f_offset_env"
-CONFIG_F_OFFSET_SECS_ENV = "config_f_offset_secs_env"
-CONFIG_OFFSET_SECS = "config_offset_secs"
-CONFIG_OFFSET_STR = "config_offset_str"
+CONFIG_F_OFFSET_ENV = "f_offset_env"
+CONFIG_F_OFFSET_SECS_ENV = "f_offset_secs_env"
+CONFIG_OFFSET_SECS = "offset_secs"
+CONFIG_OFFSET_STR = "offset_str"
 F_OFFSET_ENV = "offset.env"
 F_OFFSET_SECS_ENV = "offset_sec.env"
-CONFIG_F_TIMESTAMP_CAMERA_ENV = "config_f_timestamp_camera_env"
-CONFIG_F_TIMESTAMP_GPS_ENV = "config_f_timestamp_gps_env"
-CONFIG_F_TIMESTAMP_CAMERA = "config_f_timestamp_camera"
-CONFIG_F_TIMESTAMP_GPS = "config_f_timestamp_gps"
-CONFIG_TIMESTAMP_CAMERA = "config_timestamp_camera"
-CONFIG_TIMESTAMP_GPS = "config_timestamp_gps"
+CONFIG_F_TIMESTAMP_CAMERA_ENV = "f_timestamp_camera_env"
+CONFIG_F_TIMESTAMP_GPS_ENV = "f_timestamp_gps_env"
+CONFIG_F_TIMESTAMP_CAMERA = "f_timestamp_camera"
+CONFIG_F_TIMESTAMP_GPS = "f_timestamp_gps"
+CONFIG_TIMESTAMP_CAMERA = "timestamp_camera"
+CONFIG_TIMESTAMP_GPS = "timestamp_gps"
 F_TIMESTAMP_IMG_ENV = "timestamp_img.env"
 F_TIMESTAMP_GPS = "timestamp_gps.json"
 F_TIMESTAMP_CAMERA = "timestamp_camera.json"
 
 # OpenStretMap Configuration
-CONFIG_F_OSM_ENV = "config_f_osm_env"
-CONFIG_F_OSM = "config_f_osm"
+CONFIG_F_OSM_ENV = "f_osm_env"
+CONFIG_F_OSM = "f_osm"
 F_OSM_ENV = "osm.env"  # contains name of osm config file
 F_OSM = "osm.json"
 
 # Geotracker GPX DATA
-CONFIG_F_GPX_MERGED_ENV = "config_f_gpx_merged_env"
-CONFIG_F_GPX_MERGED = "config_f_gpx_merged"
+CONFIG_F_GPX_MERGED_ENV = "f_gpx_merged_env"
+CONFIG_F_GPX_MERGED = "f_gpx_merged"
+CONFIG_F_GPX_MERGED_JSON = "f_gpx_merged_json"
 F_GPX_MERGED_ENV = "gpx_merged.env"
 F_GPX_MERGED = "gpx_merged.gpx"
+F_GPX_MERGED_JSON = "gpx_merged.json"
 
 F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
 
@@ -397,6 +399,7 @@ CONFIG_METADATA = {
         CONFIG_F_TIMESTAMP_GPS: None,
         CONFIG_F_OSM: None,  # OSM URL Link
         CONFIG_F_GPX_MERGED: None,  # Link to merged GPX Files
+        CONFIG_F_GPX_MERGED_JSON: None,  # Link to merged GPX JSON
     },
     OFFSET: {
         CONFIG_OFFSET_STR: "+00:00:00",  # Offset as -+hh:mm:ss
@@ -404,10 +407,10 @@ CONFIG_METADATA = {
         CONFIG_TIMESTAMP_CAMERA: {},  # Offset JSON for Camera
         CONFIG_TIMESTAMP_GPS: {},  # Offset JSON for GPS
     },
-    METADATA_EXIF: {},  # Copied from F_METADATA_EXIF / but with FILENAME as key
-    IMAGES: {},  # metadata for each file, structure see below
     METADATA_OSM: {},  # Geo Metadata retrieved via EXIFTOOL and copied from F_OSM_INFO
     GPS_TRACK: {},  # GPS Track, copy of F_GPX_MERGED_JSON
+    METADATA_EXIF: {},  # Copied from F_METADATA_EXIF / but with FILENAME as key
+    IMAGES: {},  # metadata for each file, structure see below
 }
 
 IMAGE_METADATA = {  # Blueprint for each image
@@ -905,6 +908,7 @@ class ImageOrganizer:
         images = config_metadata[IMAGES]
         metadata_osm = config_metadata[METADATA_OSM]
         gps_track = config_metadata[GPS_TRACK]
+
         # mapping the env file contents as refs to the values if these files are present
         env_fileref_map = {
             files_env[CONFIG_F_METADATA_ENV]: CONFIG_F_METADATA,
@@ -913,26 +917,18 @@ class ImageOrganizer:
             files_env[CONFIG_F_OSM_ENV]: CONFIG_F_OSM,
             files_env[CONFIG_F_GPX_MERGED_ENV]: CONFIG_F_GPX_MERGED,
         }
+
         # copying the file names if they are present (without indirection)
         env_file_map = {
             files_env[CONFIG_F_TIMESTAMP_CAMERA_ENV]: CONFIG_F_TIMESTAMP_CAMERA,
             files_env[CONFIG_F_TIMESTAMP_GPS_ENV]: CONFIG_F_TIMESTAMP_GPS,
         }
+
         # mapping the values in the env files to fields
         env_file_value_map = {
-            files_env[CONFIG_F_OFFSET_ENV]: offset[CONFIG_OFFSET_STR],
-            files_env[CONFIG_F_OFFSET_SECS_ENV]: offset[CONFIG_OFFSET_SECS],
+            files_env[CONFIG_F_OFFSET_ENV]: CONFIG_OFFSET_STR,
+            files_env[CONFIG_F_OFFSET_SECS_ENV]: CONFIG_OFFSET_SECS,
         }
-        # mapping the file contents to the value fields
-        # CONFIG_F_METADATA is an exception as it will be created here
-        file_value_map = {
-            CONFIG_F_METADATA_EXIF: metadata_exif,
-            CONFIG_F_TIMESTAMP_CAMERA: offset[CONFIG_TIMESTAMP_CAMERA],
-            CONFIG_F_TIMESTAMP_GPS: offset[CONFIG_TIMESTAMP_GPS],
-            CONFIG_F_OSM: metadata_osm,
-            CONFIG_F_GPX_MERGED: gps_track,
-        }
-        # Now populate the metadata
 
         # create the file references
         for env_ref, file_ref in env_fileref_map.items():
@@ -958,6 +954,83 @@ class ImageOrganizer:
             if not f_env.is_file():
                 continue
             files[file_ref] = f_env
+            print(f"{C_H}Assigned [{file_ref}]: {C_F}[{f_env}]{C_0}")
+
+        # reeading values
+        # create the file references
+        for env_ref, file_ref in env_file_value_map.items():
+            f_env = _path.joinpath(env_ref)
+            # print(f_env)
+            if not f_env.is_file():
+                continue
+
+            value = None
+            try:
+                value = Persistence.read_txt_file(f_env)[0].strip()
+            except (IndexError, KeyError):
+                print(f"{C_E}🚨 Couldn't read file ref {C_F}[{f_env}]{C_0}")
+                continue
+            if value is None:
+                continue
+            print(f"{C_H}Assigning [{file_ref}] from [{env_ref}]: {C_F}[{value}]{C_0}")
+            offset[file_ref] = value
+
+        # now directly copy contents
+        # copy the gpx merged json
+        f_gpx_json: Path = None
+        if files[CONFIG_F_GPX_MERGED]:
+            f_gpx = Path(files[CONFIG_F_GPX_MERGED])
+            f_gpx_json = f_gpx.parent.joinpath(f_gpx.stem + ".json")
+            print("hugo", f_gpx_json)
+        if f_gpx_json and f_gpx_json.is_file():
+            files[CONFIG_F_GPX_MERGED_JSON] = str(f_gpx_json)
+
+        # transform metadata_exif transforming it into a dict
+        metadata_exif_dict = {}
+        if files[CONFIG_F_METADATA_EXIF]:
+            f_metadata_exif = Path(files[CONFIG_F_METADATA_EXIF])
+            metadata_exif_list = Persistence.read_json(f_metadata_exif)
+            for metadata_exif in metadata_exif_list:
+                key = metadata_exif["File"]["FileName"]
+                metadata_exif_dict[key] = metadata_exif
+
+        config_metadata[METADATA_EXIF] = metadata_exif_dict
+
+        # get the other json data
+        maps_json = [
+            {"file": CONFIG_F_TIMESTAMP_CAMERA, "dict": offset, "target": CONFIG_TIMESTAMP_CAMERA},
+            {"file": CONFIG_F_TIMESTAMP_GPS, "dict": offset, "target": CONFIG_TIMESTAMP_GPS},
+            {"file": CONFIG_F_OSM, "dict": config_metadata, "target": METADATA_OSM},
+            {"file": CONFIG_F_GPX_MERGED_JSON, "dict": config_metadata, "target": GPS_TRACK},
+        ]
+        for map_json in maps_json:
+            file_ref = files[map_json["file"]]
+            if file_ref is None:
+                continue
+            map_json["dict"][map_json["target"]] = Persistence.read_json(file_ref)
+
+        # finally pull together image data into output structure
+
+        # try:
+        #     value = Persistence.read_json jstxt_file(f_env)[0].strip()
+        # except (IndexError, KeyError):
+        #     print(f"{C_E}🚨 Couldn't read file ref {C_F}[{f_env}]{C_0}")
+        #     continue
+        # print("hugo", f_env, "value", value)
+        # file_ref = value
+        # print(f"{C_H}Reading value from [{f_env}]: {C_F}[{value}]{C_0}")
+
+        # now use the found files to dereference values
+        # env_file_value_map = {
+        #     files_env[CONFIG_F_OFFSET_ENV]: offset[CONFIG_OFFSET_STR],
+        #     files_env[CONFIG_F_OFFSET_SECS_ENV]: offset[CONFIG_OFFSET_SECS],
+        # }
+        # # mapp
+        # for env_file, file_ref in env_file_value_map.items():
+        #     f_env = _path.joinpath(env_file)
+        #     if not f_env.is_file():
+        #         continue
+        #     files[file_ref] = f_env
 
         # special case: convert EXIF METADATA into a dict with filename as key
         # TODO
