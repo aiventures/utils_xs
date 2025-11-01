@@ -184,8 +184,10 @@ class BinarySorter:
             _data = self.get_data_by_key(_key)
             _return = _data.get(self._sort_key)
             return {"input": _value, "return": _return, "key": _key, "data": _data, "field": self._sort_key}
-        except (IndexError, ValueError):
-            print(f"{C_E} Value [{_value}] couldn't be found in data in field [{self._sort_key}] or in Index {C_0}")
+        except (IndexError, ValueError, AttributeError):
+            print(
+                f"{C_W}🚨 Binary Sorter: Value [{_value}] couldn't be found in data in field [{self._sort_key}] or in Index {C_0}"
+            )
             return None
 
 

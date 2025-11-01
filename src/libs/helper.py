@@ -49,20 +49,78 @@ class Helper:
 
     @staticmethod
     def get_datetime_from_format_string(
-        dt_str: str,
-        timezone="Europe/Berlin",
-        time_format="%Y:%m:%d %H:%M:%S",
-        offset_sec: int = 0,
+        dt_str: str, time_format: str, default_timezone: str = "Europe/Berlin", offset: int = 0
     ) -> DateTime:
-        """converts into datetime"""
+        """
+        Created Using Prompt
 
-        # Parse the string into a naive datetime object
-        dt_naive = DateTime.strptime(dt_str, time_format)
+        Convert a flexible datetime string into an ISO 8601 UTC datetime string.
 
-        # Attach a time zone (e.g., Europe/Berlin)
-        dt_local = dt_naive.replace(tzinfo=ZoneInfo(timezone))
-        dt_local += timedelta(seconds=offset_sec)
-        return dt_local
+        This function parses a datetime string using a user-defined format string,
+        attaches a default timezone if none is provided, and converts the result
+        to a UTC ISO 8601 string. It also detects and applies timezone suffixes
+        such as 'Z', '+HH:MM', or '-HH:MM' if present at the end of the input.
+
+        Supported format directives include:
+        - %Y: Year
+        - %m: Month
+        - %d: Day
+        - %H: Hour (24-hour)
+        - %M: Minute
+        - %S: Second
+        - %f: Microsecond (use for milliseconds as well)
+
+        Timezone suffixes must appear at the end of the string and follow ISO 8601:
+        - 'Z' for UTC
+        - '+HH:MM' or '-HH:MM' for offsets
+
+        Args:
+            dt_str (str): The datetime string to parse.
+            time_format (str): The format string describing the structure of dt_str.
+            default_timezone (str): IANA timezone name to apply if no suffix is present.
+
+        Returns:
+            Tuple[DateTime, Optional[str]]:
+                - UTC DateTime (dt_utc.isoformat() ISO 8601
+                  formatted UTC datetime string (e.g., '2024-08-01T12:38:32.499588Z')
+                - Timezone suffix if detected ('Z', '+02:00', '-05:00'), otherwise None
+
+        Raises:
+            ValueError: If the datetime string cannot be parsed using the provided format.
+        """
+        # Detect timezone suffix
+        tz_match = re.search(r"(Z|[+-]\d{2}:\d{2})$", dt_str)
+        tz_info = tz_match.group(1) if tz_match else None
+        dt_str_clean = dt_str[: -len(tz_info)] if tz_info else dt_str
+
+        # Parse datetime
+        try:
+            dt_naive = DateTime.strptime(dt_str_clean, time_format)
+        except ValueError as e:
+            raise ValueError(f"Failed to parse datetime string: {e}")
+
+        # Attach default timezone
+        dt_local = dt_naive.replace(tzinfo=ZoneInfo(default_timezone))
+        # apply offset
+        if offset != 0:
+            dt_local += timedelta(seconds=offset)
+
+        # Apply timezone suffix if present
+        if tz_info == "Z":
+            dt_utc = dt_local.astimezone(timezone.utc)
+        elif tz_info:
+            offset_hours, offset_minutes = map(int, tz_info[1:].split(":"))
+            offset_delta = timedelta(hours=offset_hours, minutes=offset_minutes)
+            if tz_info.startswith("-"):
+                offset_delta = -offset_delta
+            tz = timezone(offset_delta)
+            dt_local = dt_local.replace(tzinfo=tz)
+            dt_utc = dt_local.astimezone(timezone.utc)
+        else:
+            dt_utc = dt_local.astimezone(timezone.utc)
+
+        return dt_utc
+        # return dt_utc.isoformat(), tz_info
 
     @staticmethod
     def get_utc_offset(
@@ -85,9 +143,12 @@ class Helper:
         Example:
         - get_dst_offset_string("Europe/Berlin"))  # Might return "+02:00" during DST
         """
+
+        # dt_str: str, time_format: str, default_timezone: str = "Europe/Berlin"
+
         dt = DateTime.now()
         if isinstance(dt_in, str):
-            dt = Helper.get_datetime_from_format_string(dt_in, timezone, time_format, offset_sec)
+            dt = Helper.get_datetime_from_format_string(dt_in, time_format, timezone)
         elif isinstance(dt_in, DateTime):
             dt = dt_in
 
