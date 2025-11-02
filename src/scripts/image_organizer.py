@@ -187,7 +187,7 @@ from zoneinfo import ZoneInfo
 from dateutil import parser as date_parser
 
 # ANSI color codes
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W, C_S
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
 from libs.helper import Persistence, CmdRunner, Transformer, Helper
 from libs.binary_sorter import BinarySorter
@@ -222,7 +222,6 @@ CMD_EXIFTOOL_EXPORT_METADATA_RECURSIVE = [
 ] + SUFFIX_ARGS
 CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
 
-
 # 3. EXIFTOOL command to geotag images based on a gps track
 # https://exiftool.org/geotag.html
 # exiftool -progress50 -json -jpg -tif -geosync=00:00:00 -geotag mygps.gpx <file/path>
@@ -236,6 +235,7 @@ CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-progress50", "-json"] + SUFFIX_ARGS
 # Shows the geolocations as json file when there are GPS Coordinates available
 # exiftool -api geolocation "-geolocation*" -lang de -json <file/path>
 CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-api", "geolocation", "-lang", "de", "-progress50", "-json"] + SUFFIX_ARGS
+
 # 5. EXIFTOOL to export reverse Geo Coordinates base on lat lon
 # exiftool -g3 -a -json -lang de -api geolocation=40.748817,-73.985428
 CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api", "geolocation"]
@@ -308,7 +308,7 @@ FILES_ENV = "files_env"
 METADATA_EXIF = "metadata_exif"
 METADATA_OSM = "metaddata_osm"
 TIMESTAMP_IMAGE = "timestamp_image"
-IMAGES = "images"
+IMAGE_GEO_INFO = "image_geo_info"
 OFFSET = "offset"
 OFFSET_SECS = "offset_secs"
 OFFSET_STR = "offset_str"
@@ -319,7 +319,7 @@ LAT_LON_ORIGIN = "lat_lon_origin"
 GPS_TRACK = "gps_track"
 GPS_METADATA = "gps_metadata"
 TIMESTAMP_UTC = "timestamp_utc"
-
+TIMEZONE_DEFAULT = "Europe/Berlin"
 
 # All Metadata (the json template below)
 CONFIG_F_METADATA_ENV = "f_metadata_env"
@@ -373,8 +373,36 @@ F_GPX_MERGED_JSON = "gpx_merged.json"
 
 F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
 
+# GEOREVERSE STRUCTURE
+GEOREVERSE_METADATA_JSON: Dict = {
+    "idx": 1,
+    "file": None,
+    "lat_lon": None,
+    "geo_reverse": {},
+    "geo_info": None,
+    "time_zone": None,
+}
+
+# Collected Geo Information alongside with origin info
+GEOTRACK_INFO: Dict = {
+    "geotrack_origin": None,
+    "metaddata_geo": None,
+    "gps_info": {
+        "datetime_camera_exif": None,
+        "offset": 0,
+        "datetime_camera_utc": None,
+        "datetime_gps_utc": None,
+        "timestamp_camera": None,
+        "timestamp_gps": None,
+        "timestamp_diff": None,
+    },
+}
+
+GEOTRACK_ORIGIN_OSM = "osm"
+GEOTRACK_ORIGIN_GPX = "gpx"
+
 # general setup of the metadata json containin all relevant information
-CONFIG_METADATA = {
+CONFIG_METADATA: Dict = {
     DATETIME: None,  # creation date of this file
     TIMESTAMP_UTC: None,  # creation date timestamp
     FILES_ENV: {  # indirection/hardwired: insread of using file names directly, use an indirection via env
@@ -410,17 +438,7 @@ CONFIG_METADATA = {
     METADATA_OSM: {},  # Geo Metadata retrieved via EXIFTOOL and copied from F_OSM_INFO
     GPS_TRACK: {},  # GPS Track, copy of F_GPX_MERGED_JSON
     METADATA_EXIF: {},  # Copied from F_METADATA_EXIF / but with FILENAME as key
-    IMAGES: {},  # metadata for each file, structure see below
-}
-
-IMAGE_METADATA = {  # Blueprint for each image
-    FILENAME: None,  # Copied from metadata_exif.json ["File"]["FileName"]
-    DATETIME_ORIGINAL: None,  # Datetime Original ["Composite"]["SubSecDateTimeOriginal"]
-    DATETIME_ADJUSTED: None,  # Adjusted DateTime (Offset Applied) yyyy:mm:dd HH:MM:SS.mm+02:00
-    TIMESTAMP_UTC: None,  # datetime adjusted as UTC timestamp
-    LAT_LON: None,  # LAT LON Tuple
-    LAT_LON_ORIGIN: None,  # Origin from gpx or osm ref link
-    GPS_METADATA: {},  # Exiftool reverse geo metadata retrieved from osm link or from GPX track
+    IMAGE_GEO_INFO: {},  # metadata for each file, structure see below
 }
 
 
@@ -717,16 +735,12 @@ class GeoLocation:
         return shortcut
 
     @staticmethod
-    def get_exiftool_reverse_geoinfo(latlon: Tuple | List, file: str = None, index: int = 0) -> dict:
+    def get_exiftool_reverse_geoinfo(
+        latlon: Tuple | List, file: str = None, index: int = 0, show: bool = False
+    ) -> dict:
         """Using Exiftool Reverse Geo API get the reverse corrdinates"""
-        out = {
-            "idx": index,
-            "file": None,
-            "lat_lon": None,
-            "geo_reverse": {},
-            "geo_info": None,
-            "time_zone": "Europe/Berlin",
-        }
+
+        out = deepcopy(GEOREVERSE_METADATA_JSON)
 
         if not (isinstance(latlon, List) or isinstance(latlon, Tuple)):
             print(f"{C_E}🚨 get_exiftool_reverse_geoinfo, passed params need to be list or tuple{C_0}")
@@ -761,9 +775,10 @@ class GeoLocation:
                 geo_info = f"{distance}, {bearing}° to {city}/{subregion}/{region}"
                 out["geo_info"] = geo_info
                 out["time_zone"] = time_zone
-                print(
-                    f"\n{C_T}### OSM Coordinates {C_F}[{out['file']}] {C_Q}{out['lat_lon']}, {C_H}{geo_info} ({time_zone}){C_0}"
-                )
+                if show:
+                    print(
+                        f"\n{C_T}### OSM Coordinates {C_F}[{out['file']}] {C_Q}{out['lat_lon']}, {C_H}{geo_info} ({time_zone}){C_0}"
+                    )
             except (JSONDecodeError, IndexError) as e:
                 print(f"{C_E}🚨 Error occured during parsing OSM Coordinates [{latlon}], {e}")
                 return None
@@ -901,24 +916,57 @@ class GeoLocation:
 class ImageOrganizer:
     """Class to process image metadata"""
 
+    def __init__(
+        self,
+        path: Path | str = None,
+        timezone_s: str = TIMEZONE_DEFAULT,
+        show_gps_image: bool = True,
+        max_timediff: int = 300,
+    ):
+        self._timezone = timezone_s
+        # get the work path
+        _path = Path.cwd()
+        if path is not None:
+            _path = Path(path)
+        if not _path.is_dir():
+            print(f"{C_E}🚨 [ImageOrganizer] No valid path {_path}{C_0}")
+            return
+        self._path: Path = _path
+        # setting the file names
+        # variables to keep
+        self._show_gps_image: bool = show_gps_image
+        # all metadata
+        self._metadata: Dict = None
+        # maximum time difference between EXIF Date and GPS Date allowed in seconds
+        self._max_timediff = max_timediff
+
     @staticmethod
-    def process_image(
-        metadata_exif: Dict,
-        gpx_sorter: BinarySorter,
-        time_offset_secs: int = 0,
-        metadata_osm: Dict = None,
-        timezone_s: str = "Europe/Berlin",
-    ) -> Dict | None:
-        """Merges geo and image metadata info into an output format"""
+    def get_img_geo_from_track(metadata_exif: Dict, gpx_sorter: BinarySorter, time_offset_secs: int = 0) -> Dict | None:
+        """Gets the geo reverse infomration using gpx track"""
+        geo_info: Dict = None
         _file_name = "unknown"
+        _file_name_absolute = "unknown"
         out_str = "🖼️   "
         _offset = -time_offset_secs
+        _track_info = None
+        _lat_lon = None
+
+        track_info: Dict = deepcopy(GEOTRACK_INFO)
+        track_info["geotrack_origin"] = GEOTRACK_ORIGIN_GPX
+
         try:
+            _gps_info = track_info["gps_info"]
             _file_name = metadata_exif.get("File", {}).get("FileName", "No Filename Found")
+            _file_name_absolute = metadata_exif.get("SourceFile", "Unknown")
+
             out_str += f"{C_F}[{_file_name}] {C_0}"
 
-            # Parse the date time 2025:08:31 16:04:26.73+02:00
+            # Parse the date time string like: 2025:08:31 16:04:26.73+02:00
+            # Note the timezone is already there and will be considered
             _datetime = metadata_exif["Composite"]["SubSecDateTimeOriginal"]
+            _gps_info["datetime_camera_exif"] = _datetime
+            _gps_info["offset"] = _offset
+
             out_str += f" {C_H}{_datetime}/{C_Q}{_offset}"
             print(out_str)
             out_str = ""
@@ -929,34 +977,51 @@ class ImageOrganizer:
             )
             out_str += f"{C_H}    📷 {_datetime_utc.isoformat()}"
             _cam_timestamp_utc = _datetime_utc.timestamp() * 1000
+            _gps_info["datetime_camera_utc"] = _datetime_utc.isoformat()
+            _gps_info["timestamp_camera"] = int(_cam_timestamp_utc)
 
             # get the gpx entry
             _track_info = gpx_sorter.get_data_by_value(_cam_timestamp_utc)
             if _track_info:
                 _track_data = _track_info["data"]
                 _track_timestamp_utc = _track_data["utc_timestamp"]
-                lat_lon = [round(float(_track_data["lat"]), 7), round(float(_track_data["lon"]), 7)]
-
+                # 6 digits should be enough, accuracy on 10cm level ...
+                # https://docs.mapbox.com/help/dive-deeper/geojson-coordinate-precision/
+                # https://rapidlasso.de/how-many-decimal-digits-for-storing-longitude-latitude/
+                _lat_lon = [round(float(_track_data["lat"]), 6), round(float(_track_data["lon"]), 6)]
                 _gps_date_time = DateTime.fromtimestamp(_track_timestamp_utc / 1000, tz=timezone.utc)
-                _timestamp_diff = round((_cam_timestamp_utc - _track_timestamp_utc) / 1000, 1)
+                _timestamp_diff = round((_cam_timestamp_utc - _track_timestamp_utc) / 1000, 3)
                 out_str += f" | 🛰️  ({_gps_date_time.isoformat()}) |\n    {C_W}🔢 Diff: [{_timestamp_diff}]sec,  "
-                out_str += f"{C_PY}🌏 {lat_lon}{C_0}"
+                out_str += f"{C_PY}🌏 {_lat_lon}{C_0}"
+                _gps_info["datetime_gps_utc"] = _gps_date_time.isoformat()
+                _gps_info["timestamp_gps"] = _track_timestamp_utc
+                _gps_info["timestamp_diff"] = _timestamp_diff
                 print(out_str)
 
-                # print(json.dumps(_track_info, indent=4))
-                pass
             else:
-                print(f"{C_E}🚨 Metadata File [{_file_name}] has out of bounds time [{_datetime}]{C_0}")
-                return
+                print(f"{C_W}🚨 Metadata File [{_file_name}] has out of bounds time [{_datetime}]{C_0}")
 
         except (ValueError, KeyError) as e:
-            print(f"{C_E}🚨 Metadata File [{_file_name}] has unexpected format{C_0}")
+            print(f"{C_E}🚨 Metadata File [{_file_name}] has unexpected format, {e}{C_0}")
 
-        out = {}
-        return out
+        if not os.path.isfile(_file_name_absolute):
+            print(f"{C_E}🚨 File [{_file_name_absolute}] doesn't exist.{C_0}")
+            return
+
+        if _lat_lon is None:
+            print(f"{C_W}🚨 File [{_file_name_absolute}] no coordinates found.{C_0}")
+            return
+
+        # return the dict
+        geo_info = GeoLocation.get_exiftool_reverse_geoinfo(_lat_lon, _file_name_absolute, 1)
+        track_info["metaddata_geo"] = geo_info
+
+        return track_info
 
     @staticmethod
-    def process_images(path: Optional[Path] = None, filename_metadata: str = F_METADATA, metadata: dict = None) -> Dict:
+    def process_geo_metadata(
+        path: Optional[Path] = None, filename_metadata: str = F_METADATA, metadata: dict = None
+    ) -> Dict:
         """Based on the metadata file, collect metadata for all images"""
         _path = Path(path)
         if _path is None:
@@ -970,13 +1035,13 @@ class ImageOrganizer:
                 return
             _metadata = Persistence.read_json(_f_metadata_json)
         # get dict fields
-        _datetime_created = _metadata[DATETIME]
-        _file_refs = _metadata[FILES]
         _offset = _metadata[OFFSET]
         _gps_track = _metadata[GPS_TRACK]
         _track_dict = _gps_track.get("track", {})
         _has_gps_track = True if len(_track_dict) > 0 else False
         _metadata_exif = _metadata[METADATA_EXIF]
+        _image_geo_info = _metadata[IMAGE_GEO_INFO]
+
         # get fixed data and default values
         _offset_secs = 0
         try:
@@ -985,32 +1050,54 @@ class ImageOrganizer:
             pass
         # osm metadata
         _metadata_osm = _metadata[METADATA_OSM]
+
         _has_osm_latlon = False if len(_metadata_osm) == 0 else True
         _osm_latlon = _metadata_osm.get(LAT_LON)
         _osm_geo_info = _metadata_osm.get("geo_info")
         _timezone = _metadata_osm.get("timezone", "Europe/Berlin")
+        _gpx_sorter = None
 
         print(f"{C_T}### Collecting Image Metadata in path {C_F}[{path}]{C_0}")
         if _has_osm_latlon:
             print(f"{C_H}    🎯 OSM Fallback: {_osm_latlon}, {_osm_geo_info}{C_0}")
         if _has_gps_track:
             print(f"{C_H}    🌍 GPS TRACK has [{len(_track_dict)}] trackpoints{C_0}")
-        # now get the gps track into a sorted dict
-        _gpx_sorter = BinarySorter(_track_dict, "utc_timestamp")
+            # now get the gps track into a sorted dict
+            _gpx_sorter = BinarySorter(_track_dict, "utc_timestamp")
 
-        # def process_image(
-        #     metadata_exif: Dict, gpx_sorter: BinarySorter, time_offset_secs: int = 0, metadata_osm: Dict = None
-        # ) -> Dict:
+        # create the osm geo fallback information
+        img_geo_osm_meta = None
+        img_geo_osm_lat_lon = "not set"
+        f_osm = "no_file"
+        if _has_osm_latlon:
+            img_geo_osm_meta = deepcopy(GEOTRACK_INFO)
+            img_geo_osm_meta["geotrack_origin"] = GEOTRACK_ORIGIN_OSM
+            img_geo_osm_meta["metaddata_geo"] = _metadata_osm
+            img_geo_osm_lat_lon = str(_metadata_osm[LAT_LON])
+            f_osm = Path(_metadata_osm["file"]).name
 
+        # now get alle gps corrdinates
         print(f"{C_T}### Processing Images {C_F}[{path}]{C_0}")
         for _f_img, _img_meta in _metadata_exif.items():
-            ImageOrganizer.process_image(
-                metadata_exif=_img_meta,
-                gpx_sorter=_gpx_sorter,
-                time_offset_secs=_offset_secs,
-                metadata_osm=_metadata_osm,
-                timezone_s=_timezone,
-            )
+            img_geo: Dict = None
+
+            # get geo data from GPX Track
+            if _has_gps_track:
+                img_geo = ImageOrganizer.get_img_geo_from_track(
+                    metadata_exif=_img_meta, gpx_sorter=_gpx_sorter, time_offset_secs=_offset_secs
+                )
+
+            # as fallback use osm geodata if present
+            if img_geo is None and _has_osm_latlon:
+                print(f"{C_W}🌏 Using OSM Coordinates {C_F}[{f_osm}]: {C_S}{img_geo_osm_lat_lon}{C_0}")
+                img_geo = deepcopy(img_geo_osm_meta)
+
+            if img_geo is None:
+                continue
+
+            _image_geo_info[_f_img] = img_geo
+
+        return _metadata
 
     @staticmethod
     def merge_metadata(path: Optional[Path] = None) -> Dict:
@@ -1035,9 +1122,6 @@ class ImageOrganizer:
         files[CONFIG_F_METADATA] = os.path.join(_path, F_METADATA)
         offset = config_metadata[OFFSET]
         metadata_exif = config_metadata[METADATA_EXIF]
-        images = config_metadata[IMAGES]
-        metadata_osm = config_metadata[METADATA_OSM]
-        gps_track = config_metadata[GPS_TRACK]
 
         # mapping the env file contents as refs to the values if these files are present
         env_fileref_map = {
@@ -1138,9 +1222,6 @@ class ImageOrganizer:
                 continue
             map_json["dict"][map_json["target"]] = Persistence.read_json(file_ref)
 
-        # save items
-        Persistence.save_json(files[CONFIG_F_METADATA], config_metadata)
-
         return config_metadata
 
     @staticmethod
@@ -1230,8 +1311,7 @@ class ImageOrganizer:
 
         return output
 
-    @staticmethod
-    def prepare_collateral_files(p_source: Path, show_gps_image: bool = True) -> None:
+    def prepare_collateral_files(self) -> None:
         """Prepare collateral files centrally.
         - Delete Collateral Files first
         - Merge GPX Files if there are any => F_GPX_ENV
@@ -1241,41 +1321,39 @@ class ImageOrganizer:
         - Extract lat lon default from OSM links => F_LAT_LON_ENV
         """
 
-        # use current path or input path
-        p_work = p_source if p_source.is_dir() else Path().resolve()
         # 0. Delete any temporary files
-        ImageOrganizer.cleanup_env_files(p_source, delete_generated_files=True)
+        self.cleanup_env_files(delete_generated_files=True)
         # Create the EXIF metadata
-        cmd = ImageOrganizer.get_exiftool_cmd_export_meta(p_work, recursive=False)
+        cmd = ImageOrganizer.get_exiftool_cmd_export_meta(self._path, recursive=False)
         print("HUGO create Metadata:", cmd)
-        f_metadata_exif = p_work.joinpath(F_METADATA_EXIF)
+        f_metadata_exif = self._path.joinpath(F_METADATA_EXIF)
         _ = CmdRunner.run_cmd_and_stream(cmd, f_metadata_exif)
-        Persistence.save_txt(p_work / F_METADATA_EXIF_ENV, str(f_metadata_exif))
+        Persistence.save_txt(self._path / F_METADATA_EXIF_ENV, str(f_metadata_exif))
 
         # 1. Create Merged GPS, if not already present
         print("HUGO merge_gpx")
         # create the merged gpx
-        _ = GeoLocation.merge_gpx(p_work, F_GPX_MERGED)
+        _ = GeoLocation.merge_gpx(self._path, F_GPX_MERGED)
         # store the file name of the merged gpx into an env file
-        Persistence.save_txt(p_work.joinpath(F_GPX_MERGED_ENV), str(p_work.joinpath(F_GPX_MERGED)))
+        Persistence.save_txt(self._path.joinpath(F_GPX_MERGED_ENV), str(self._path.joinpath(F_GPX_MERGED)))
         # 2. Select Reference File and extract timestanp of camera
         print("HUGO extract_image_timestamp")
-        timstamp_dict_camera = ImageOrganizer.extract_image_timestamp(p_source)
+        timstamp_dict_camera = ImageOrganizer.extract_image_timestamp(self._path)
         # 3. Now Get the GPS Timestamp (as seen on the image of the previous image)
         print("HUGO calculate_time_offset")
-        time_offset = ImageOrganizer.calculate_time_offset(p_work, show_gps_image)
+        time_offset = ImageOrganizer.calculate_time_offset(self._path, self._show_gps_image)
         # 4. Extract the OSM Link as default GPS Coordinates
         print("HUGO get_openstreetmap_coordinates_from_folder")
         # 5. create a dict with all geo info metadata from osm link
         f_osm_info = F_OSM
-        _ = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, p_work)
-        Persistence.save_txt(p_work.joinpath(F_OSM_ENV), str(p_work.joinpath(f_osm_info)))
+        _ = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, self._path)
+        Persistence.save_txt(self._path.joinpath(F_OSM_ENV), str(self._path.joinpath(f_osm_info)))
         # 6. Create a metadata json containing everything
-        metadata = ImageOrganizer.merge_metadata(p_work)
-        # 7. Combine all the metadata
-        # def process_images(path: Optional[Path] = None, filename_metadata: str = F_METADATA, metadata: dict = None) -> Dict:
-        # def process_images(path: Optional[Path] = None, filename_metadata: str = F_METADATA, metadata: dict = None) -> Dict:
-        ImageOrganizer.process_images(path=p_work, metadata=metadata)
+        metadata = ImageOrganizer.merge_metadata(self._path)
+        # 7. Save all Data to a big metadata.json
+        metadata = ImageOrganizer.process_geo_metadata(path=self._path, metadata=metadata)
+        f_metadata = metadata[FILES][CONFIG_F_METADATA]
+        Persistence.save_json(f_metadata, metadata)
 
     @staticmethod
     def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
@@ -1408,26 +1486,23 @@ class ImageOrganizer:
         os.system(f"start {f_image.name}")
         os.chdir(p_cwd)
 
-    @staticmethod
-    def cleanup_env_files(path: Path = None, delete_generated_files: bool = False):
+    def cleanup_env_files(self, delete_generated_files: bool = False):
         """CleanUp all ENV files and optionally also clean up generated meta files"""
         # env files that can be deleted right away
         delete_files = [F_TIMESTAMP_IMG_ENV, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
         # env files that contain references to generated files
         delete_files_with_ref = [F_GPX_MERGED_ENV, F_METADATA_EXIF_ENV, F_METADATA_ENV]
-        # use current path or input path
-        p_work = path if path.is_dir() else Path().resolve()
 
         # delete env files with no ref to opther files
         for f_name in delete_files:
-            f_del = p_work.joinpath(f_name)
+            f_del = self._path.joinpath(f_name)
             if f_del.is_file():
                 print(f"{C_PY}🚮 Deleting {C_F}[{f_del}]{C_0}")
                 f_del.unlink(missing_ok=True)
 
         # delete env files with no ref to opther files
         for f_name in delete_files_with_ref:
-            f_env = path.joinpath(f_name)
+            f_env = self._path.joinpath(f_name)
             if not f_env.is_file():
                 continue
             if delete_generated_files:
@@ -1602,7 +1677,9 @@ class ImageOrganizer:
         return f_gps_merged
 
     @staticmethod
-    def exiftool_add_gpsmeta_from_gps(p_source: Path, f_gps_track: str | Path | None) -> None:
+    def exiftool_add_gpsmeta_from_gps(
+        p_source: Path, f_gps_track: str | Path | None, show_gps_image: bool = True
+    ) -> None:
         """
         Execute exiftool to add GPS Coordinates from a GPX Track.
         """
@@ -1612,8 +1689,9 @@ class ImageOrganizer:
             return
         # run in project path
         os.chdir(str(p_source))
+        image_organizer = ImageOrganizer(path=p_source, timezone_s=TIMEZONE_DEFAULT, show_gps_image=show_gps_image)
         # clean up existing tmp files, get timestamps to calculate offset, get osm coordinates
-        ImageOrganizer.prepare_collateral_files(p_source)
+        image_organizer.prepare_collateral_files()
         f_track_name = f_track.name
 
         # read the geosync offset
@@ -1983,14 +2061,16 @@ class ImageOrganizer:
         if args.action_prepare_geo_meta is not True:
             return None
 
-        # action_no_image_display
-
         # validate and get the source path
-        p_source = ImageOrganizer.validate_p_source(args)
-        if p_source is None:
-            p_source = Path().resolve()
+        # p_source = ImageOrganizer.validate_p_source(args)
+        p_source = args.p_source
 
-        ImageOrganizer.prepare_collateral_files(p_source, args.action_no_image_display)
+        # TODO pass params to ImageOrganizer from args
+        show_gps_image = False if args.action_no_image_display else True
+
+        image_organizer = ImageOrganizer(path=p_source, show_gps_image=show_gps_image)
+        # clean up existing tmp files, get timestamps to calculate offset, get osm coordinates
+        image_organizer.prepare_collateral_files()
         return True
 
     @staticmethod

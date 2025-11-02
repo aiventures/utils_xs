@@ -49,7 +49,7 @@ class Helper:
 
     @staticmethod
     def get_datetime_from_format_string(
-        dt_str: str, time_format: str, default_timezone: str = "Europe/Berlin", offset: int = 0
+        dt_str: str, time_format: str, timezone_s: str = "Europe/Berlin", offset: int = 0
     ) -> DateTime:
         """
         Created Using Prompt
@@ -100,7 +100,7 @@ class Helper:
             raise ValueError(f"Failed to parse datetime string: {e}")
 
         # Attach default timezone
-        dt_local = dt_naive.replace(tzinfo=ZoneInfo(default_timezone))
+        dt_local = dt_naive.replace(tzinfo=ZoneInfo(timezone_s))
         # apply offset
         if offset != 0:
             dt_local += timedelta(seconds=offset)
@@ -197,7 +197,7 @@ class CmdRunner:
             return False
 
     @staticmethod
-    def run_cmd_and_print(cmd: List[str], decode: bool = True) -> list:
+    def run_cmd_and_print(cmd: List[str], decode: bool = True, show: bool = False) -> list:
         """
         Run a command and print both stdout and stderr to the console in real time.
 
@@ -208,7 +208,7 @@ class CmdRunner:
             bool: True if the command succeeded, False otherwise.
         """
         out = []
-        print("hugo cmd ", cmd)
+        # print("hugo cmd ", cmd)
 
         try:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -223,13 +223,15 @@ class CmdRunner:
                     if decode:
                         _s = _s.encode("latin1").decode("utf-8")
                     out.append(_s)
-                    print(f"{C_PY}[CMD] {_s}{C_0}")
+                    if show:
+                        print(f"{C_PY}[CMD] {_s}{C_0}")
                 if stderr_line:
                     _s = stderr_line.strip()
                     if decode:
                         _s = _s.encode("latin1").decode("utf-8")
                     out.append(_s)
-                    print(f"{C_E}[ERR] {_s}{C_0}")
+                    if show:
+                        print(f"{C_E}[ERR] {_s}{C_0}")
 
                 if not stdout_line and not stderr_line and process.poll() is not None:
                     break
