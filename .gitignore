@@ -169,10 +169,7 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
+# Local Stuff 
 src/config/myenv.py
 bat/myenv.py
 bat/myenv.bat
@@ -180,3 +177,5 @@ bat/myenv.bat
 .vscode/bookmarks.json
 src/config/colors.py
 bat/bat_test.bat
+src/config/local_config.py
+*_local.*

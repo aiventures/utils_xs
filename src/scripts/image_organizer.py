@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Moves Image according to their timestamps.
 
+TODO
+- Refactor to Instance Classes
+- Add the cli command to create the track from images (jpgs only)
+- Add the cli command to move file to folders without creating exifs
+- Add a cli command to rename files
+- Add cli command to create geolocation data in images including description
+
 SUMMARY
 
 This Python program automates organizing image files by their creation dates extracted from metadata.
@@ -191,6 +198,7 @@ from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
 from libs.helper import Persistence, CmdRunner, Transformer, Helper
 from libs.binary_sorter import BinarySorter
+from libs.reverse_geo import ReverseGeo
 
 
 # Paths from environemt
@@ -239,7 +247,6 @@ CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-api", "geolocation", "-lang", "de", "-pro
 # 5. EXIFTOOL to export reverse Geo Coordinates base on lat lon
 # exiftool -g3 -a -json -lang de -api geolocation=40.748817,-73.985428
 CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api", "geolocation"]
-
 
 # https://exiftool.org/Shift.html
 # https://exiftool.org/#shift
@@ -333,6 +340,13 @@ F_METADATA_EXIF_ENV = "metadata_exif.env"
 CONFIG_F_METADATA_EXIF = "f_metadata_exif"
 F_METADATA_EXIF = "metadata_exif.json"
 
+# Reverse Geo Metadata from Nominatim
+IMAGE_REVERSE_GEO_INFO = "image_reverse_geo_info"
+CONFIG_F_METADATA_GEO_REVERSE_ENV = "f_metadata_geo_reverse_env"
+F_METADATA_GEO_REVERSE = "metadata_geo_reverse.json"
+CONFIG_F_METADATA_GEO_REVERSE = "f_metadata_geo_reverse"
+
+
 # Image containing the timestamp and the GPS Image
 # Timestamp files to calculate offset
 # T_CAMERA - T_GPS = T_OFFSET
@@ -386,7 +400,7 @@ GEOREVERSE_METADATA_JSON: Dict = {
 # Collected Geo Information alongside with origin info
 GEOTRACK_INFO: Dict = {
     "geotrack_origin": None,
-    "metaddata_geo": None,
+    "me7taddata_geo": None,
     "gps_info": {
         "datetime_camera_exif": None,
         "offset": 0,
@@ -415,6 +429,7 @@ CONFIG_METADATA: Dict = {
         CONFIG_F_TIMESTAMP_GPS_ENV: F_TIMESTAMP_GPS,  # file ref to gps offset dates
         CONFIG_F_OFFSET_ENV: F_OFFSET_ENV,  # file ref to image offset in form /-+hh:mm:ss
         CONFIG_F_OFFSET_SECS_ENV: F_OFFSET_SECS_ENV,  # file ref to image offset in seconds
+        CONFIG_F_METADATA_GEO_REVERSE_ENV: F_METADATA_GEO_REVERSE,  # file to GEO REVEERSE DATA
     },
     # F_OFFSET_ENV = "offset.env"
     # F_OFFSET_SECS_ENV = "offset_sec.env"
@@ -428,6 +443,7 @@ CONFIG_METADATA: Dict = {
         CONFIG_F_OSM: None,  # OSM URL Link
         CONFIG_F_GPX_MERGED: None,  # Link to merged GPX Files
         CONFIG_F_GPX_MERGED_JSON: None,  # Link to merged GPX JSON
+        CONFIG_F_METADATA_GEO_REVERSE: None,  # Georeverse Metadata
     },
     OFFSET: {
         CONFIG_OFFSET_STR: "+00:00:00",  # Offset as -+hh:mm:ss
@@ -439,6 +455,7 @@ CONFIG_METADATA: Dict = {
     GPS_TRACK: {},  # GPS Track, copy of F_GPX_MERGED_JSON
     METADATA_EXIF: {},  # Copied from F_METADATA_EXIF / but with FILENAME as key
     IMAGE_GEO_INFO: {},  # metadata for each file, structure see below
+    IMAGE_REVERSE_GEO_INFO: {},  # reverse geo info
 }
 
 
@@ -1019,6 +1036,66 @@ class ImageOrganizer:
         return track_info
 
     @staticmethod
+    def process_reverse_geo_metadata(
+        metadata: dict,
+        path: Optional[Path] = None,
+        filename_reverse_geo: str = F_METADATA_GEO_REVERSE,
+        overwrite: bool = False,
+    ) -> Dict:
+        """Based on the metadata file, collect metadata for all images"""
+
+        _path = Path(path)
+        if _path is None:
+            _path = Path.cwd()
+        # get the data from buffered data already
+        _f_reverse_geo = _path.joinpath(filename_reverse_geo)
+        _reverse_geo_metadata: Dict = None
+
+        if _f_reverse_geo.is_file():
+            if overwrite:
+                print(f"{C_W}🚮 Overwrite existing Reverse Geo {C_F}[{_f_reverse_geo}]{C_0}")
+                os.remove(str(_f_reverse_geo))
+            else:
+                print(f"{C_H}🔢 Reverse Geo {C_F}[{_f_reverse_geo}]{C_H} exists, read from there{C_0}")
+                _reverse_geo_metadata = Persistence.read_json(_f_reverse_geo)
+
+        _reverse_geo = ReverseGeo()
+
+        # read reverse info for osm link if existent
+        _metadata_osm = metadata.get(METADATA_OSM, {})
+        _reverse_geo_osm = None
+        _osm_filename = None
+        if len(_metadata_osm) > 0:
+            _lat_lon = _metadata_osm.get(LAT_LON)
+            _osm_filename = Path(_metadata_osm.get("file", "osmlink_not_there.url")).name
+            _reverse_geo_osm = _reverse_geo.read_geo_info(_lat_lon, ext_key=_osm_filename)
+            # additionally write the metadta to the osm segment
+            _metadata_osm[IMAGE_REVERSE_GEO_INFO] = _reverse_geo_osm
+
+        if _reverse_geo_metadata is None:
+            print(f"{C_H}🌍 Reading reverse geo info from reverse geo service{C_0}")
+
+            # it will be assumed the geo info was collected prior to calling this function
+            image_geo_info_dict: Dict = metadata.get(IMAGE_GEO_INFO, {})
+            if len(image_geo_info_dict) == 0:
+                print(f"{C_W}🚨 [ImageOrganizer] the metadata segment image_geo_info is empty{C_0}")
+                return metadata
+
+            # read reverse info for all images
+            for _filename, _geo_info in image_geo_info_dict.items():
+                _lat_lon = _geo_info["metaddata_geo"]["lat_lon"]
+                _ = _reverse_geo.read_geo_info(_lat_lon, ext_key=_filename)
+
+        _reverse_geo_metadata = _reverse_geo.get_geo_info_dict(as_ext_key=True)
+        # update the metadata parts
+        metadata[FILES][CONFIG_F_METADATA_GEO_REVERSE] = str(_f_reverse_geo)
+        metadata[IMAGE_REVERSE_GEO_INFO] = _reverse_geo_metadata
+        # save the metadata in a separate file
+        Persistence.save_json(_f_reverse_geo, _reverse_geo_metadata)
+
+        return metadata
+
+    @staticmethod
     def process_geo_metadata(
         path: Optional[Path] = None, filename_metadata: str = F_METADATA, metadata: dict = None
     ) -> Dict:
@@ -1132,10 +1209,11 @@ class ImageOrganizer:
             files_env[CONFIG_F_GPX_MERGED_ENV]: CONFIG_F_GPX_MERGED,
         }
 
-        # copying the file names if they are present (without indirection)
+        # copying the file names if they are present (without indirection / hardcoded names)
         env_file_map = {
             files_env[CONFIG_F_TIMESTAMP_CAMERA_ENV]: CONFIG_F_TIMESTAMP_CAMERA,
             files_env[CONFIG_F_TIMESTAMP_GPS_ENV]: CONFIG_F_TIMESTAMP_GPS,
+            files_env[CONFIG_F_METADATA_GEO_REVERSE_ENV]: CONFIG_F_METADATA_GEO_REVERSE,
         }
 
         # mapping the values in the env files to fields
@@ -1350,8 +1428,13 @@ class ImageOrganizer:
         Persistence.save_txt(self._path.joinpath(F_OSM_ENV), str(self._path.joinpath(f_osm_info)))
         # 6. Create a metadata json containing everything
         metadata = ImageOrganizer.merge_metadata(self._path)
-        # 7. Save all Data to a big metadata.json
+        # 7. Get the GPS metadata
         metadata = ImageOrganizer.process_geo_metadata(path=self._path, metadata=metadata)
+        # 8. Get the reverse geo data / TODO make this optional
+        metadata = ImageOrganizer.process_reverse_geo_metadata(
+            metadata, path=self._path, filename_reverse_geo=F_METADATA_GEO_REVERSE, overwrite=True
+        )
+        # 9.. Save all Data to a big metadata.json
         f_metadata = metadata[FILES][CONFIG_F_METADATA]
         Persistence.save_json(f_metadata, metadata)
 
