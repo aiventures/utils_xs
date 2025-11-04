@@ -170,36 +170,109 @@ Also add to the program
 
 """
 
-import sys
+import argparse
+import datetime
+import json
 import os
 import re
-import argparse
-import json
-from json import JSONDecodeError
-import datetime
-from datetime import datetime as DateTime, timezone
-import traceback
-from bs4 import BeautifulSoup, Tag
-from copy import deepcopy
-
 import shutil
 import subprocess
+import sys
+import traceback
+from copy import deepcopy
+from datetime import datetime as DateTime
+from datetime import timezone
+from json import JSONDecodeError
 
 # import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Union, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
+
+from bs4 import BeautifulSoup, Tag
 
 # from configparser import ConfigParser
 from dateutil import parser as date_parser
 
 # ANSI color codes
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W, C_S
+from config.colors import C_0, C_B, C_E, C_F, C_H, C_I, C_L, C_P, C_PY, C_Q, C_S, C_T, C_W
+from config.constants import (
+    CONFIG_F_GPX_MERGED,
+    # GeotrackerGPXDATA,
+    CONFIG_F_GPX_MERGED_ENV,
+    CONFIG_F_GPX_MERGED_JSON,
+    CONFIG_F_METADATA,
+    CONFIG_F_METADATA_ENV,
+    CONFIG_F_METADATA_EXIF,
+    CONFIG_F_METADATA_EXIF_ENV,
+    CONFIG_F_METADATA_GEO_REVERSE,
+    CONFIG_F_METADATA_GEO_REVERSE_ENV,
+    CONFIG_F_OFFSET_ENV,
+    CONFIG_F_OFFSET_SECS_ENV,
+    CONFIG_F_OSM,
+    # OpenStretMapConfiguration,
+    CONFIG_F_OSM_ENV,
+    CONFIG_F_TIMESTAMP_CAMERA,
+    CONFIG_F_TIMESTAMP_CAMERA_ENV,
+    CONFIG_F_TIMESTAMP_GPS,
+    CONFIG_F_TIMESTAMP_GPS_ENV,
+    CONFIG_F_TIMESTAMP_IMG,
+    CONFIG_F_TIMESTAMP_IMG_ENV,
+    CONFIG_OFFSET_SECS,
+    CONFIG_OFFSET_STR,
+    CONFIG_TIMESTAMP_CAMERA,
+    CONFIG_TIMESTAMP_GPS,
+    DATETIME,
+    ELEVATION,
+    FILENAME,
+    F_GPX_MERGED,
+    # F_GPX_MERGED_JSON,
+    F_GPX_MERGED_ENV,
+    F_METADATA,
+    F_METADATA_ENV,
+    F_METADATA_EXIF,
+    F_METADATA_EXIF_ENV,
+    F_METADATA_GEO_REVERSE,
+    F_OFFSET_ENV,
+    F_OFFSET_SECS_ENV,
+    F_OSM,
+    F_OSM_ENV,
+    F_TIMESTAMP_CAMERA,
+    F_TIMESTAMP_GPS,
+    # ImagecontainingthetimestampandtheGPSImage,
+    # Timestampfilestocalculateoffset,
+    # T_CAMERA-T_GPS,
+    # defaultimageforimagecontainingcameratimestamp,
+    F_TIMESTAMP_IMG_DEFAULT,
+    F_TIMESTAMP_IMG_ENV,
+    # DATETIME_ORIGINAL,
+    # DATETIME_ADJUSTED,
+    FILES,
+    # FILENAME,
+    FILES_ENV,
+    # LAT_LON_ORIGIN,
+    GPS_TRACK,
+    HEARTRATE,
+    IMAGE_GEO_INFO,
+    IMAGE_REVERSE_GEO_INFO,
+    # OFFSET_STR,
+    # OFFSET_CAM,
+    # OFFSET_GPS,
+    LAT_LON,
+    METADATA_EXIF,
+    METADATA_OSM,
+    OFFSET,
+    OFFSET_SECS,
+    # TIMESTAMP_IMAGE,
+    # GPS_METADATA,
+    TIMESTAMP_UTC,
+    TIMEZONE,
+    TIMEZONE_DEFAULT,
+)
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
-from libs.helper import Persistence, CmdRunner, Transformer, Helper
 from libs.binary_sorter import BinarySorter
+from libs.helper import CmdRunner, Helper, Persistence, Transformer
 from libs.reverse_geo import ReverseGeo
-
 
 # Paths from environemt
 # Define image suffixes and default paths
@@ -302,89 +375,6 @@ CMD_EXIFTOOL_CREATE_WAYPOINTS = [CMD_EXIFTOOL, "-fileOrder", "gpsdatetime", "-ex
 P_PHOTO_DUMP_DEFAULT = Path(MY_P_PHOTO_DUMP)
 P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
 
-
-# Files To Be Used To Be added to the central F_METADATA FILE
-# General approach is to reference file in env files so to be flexible w.r.t. naming
-# CONFIG_FILES
-DATETIME = "datetime"
-DATETIME_ORIGINAL = "SubSecDateTimeOriginal"
-DATETIME_ADJUSTED = "DateTimeAdjusted"
-FILES = "files"
-FILENAME = "FileName"
-FILES_ENV = "files_env"
-METADATA_EXIF = "metadata_exif"
-METADATA_OSM = "metaddata_osm"
-TIMESTAMP_IMAGE = "timestamp_image"
-IMAGE_GEO_INFO = "image_geo_info"
-OFFSET = "offset"
-OFFSET_SECS = "offset_secs"
-OFFSET_STR = "offset_str"
-OFFSET_CAM = "offset_cam"
-OFFSET_GPS = "offset_gps"
-LAT_LON = "lat_lon"
-LAT_LON_ORIGIN = "lat_lon_origin"
-GPS_TRACK = "gps_track"
-GPS_METADATA = "gps_metadata"
-TIMESTAMP_UTC = "timestamp_utc"
-TIMEZONE_DEFAULT = "Europe/Berlin"
-
-# All Metadata (the json template below)
-CONFIG_F_METADATA_ENV = "f_metadata_env"
-CONFIG_F_METADATA = "f_metadata"
-F_METADATA = "metadata.json"
-F_METADATA_ENV = "metadata.env"
-
-# Image Metadata
-CONFIG_F_METADATA_EXIF_ENV = "f_metadata_exif_env"
-F_METADATA_EXIF_ENV = "metadata_exif.env"
-CONFIG_F_METADATA_EXIF = "f_metadata_exif"
-F_METADATA_EXIF = "metadata_exif.json"
-
-# Reverse Geo Metadata from Nominatim
-IMAGE_REVERSE_GEO_INFO = "image_reverse_geo_info"
-CONFIG_F_METADATA_GEO_REVERSE_ENV = "f_metadata_geo_reverse_env"
-F_METADATA_GEO_REVERSE = "metadata_geo_reverse.json"
-CONFIG_F_METADATA_GEO_REVERSE = "f_metadata_geo_reverse"
-
-
-# Image containing the timestamp and the GPS Image
-# Timestamp files to calculate offset
-# T_CAMERA - T_GPS = T_OFFSET
-# default image for image containing camera timestamp
-F_TIMESTAMP_IMG_DEFAULT = "gps.jpg"
-
-CONFIG_F_TIMESTAMP_IMG_ENV = "f_timestamp_img_env"
-CONFIG_F_TIMESTAMP_IMG = "f_timestamp_img"
-CONFIG_F_OFFSET_ENV = "f_offset_env"
-CONFIG_F_OFFSET_SECS_ENV = "f_offset_secs_env"
-CONFIG_OFFSET_SECS = "offset_secs"
-CONFIG_OFFSET_STR = "offset_str"
-F_OFFSET_ENV = "offset.env"
-F_OFFSET_SECS_ENV = "offset_sec.env"
-CONFIG_F_TIMESTAMP_CAMERA_ENV = "f_timestamp_camera_env"
-CONFIG_F_TIMESTAMP_GPS_ENV = "f_timestamp_gps_env"
-CONFIG_F_TIMESTAMP_CAMERA = "f_timestamp_camera"
-CONFIG_F_TIMESTAMP_GPS = "f_timestamp_gps"
-CONFIG_TIMESTAMP_CAMERA = "timestamp_camera"
-CONFIG_TIMESTAMP_GPS = "timestamp_gps"
-F_TIMESTAMP_IMG_ENV = "timestamp_img.env"
-F_TIMESTAMP_GPS = "timestamp_gps.json"
-F_TIMESTAMP_CAMERA = "timestamp_camera.json"
-
-# OpenStretMap Configuration
-CONFIG_F_OSM_ENV = "f_osm_env"
-CONFIG_F_OSM = "f_osm"
-F_OSM_ENV = "osm.env"  # contains name of osm config file
-F_OSM = "osm.json"
-
-# Geotracker GPX DATA
-CONFIG_F_GPX_MERGED_ENV = "f_gpx_merged_env"
-CONFIG_F_GPX_MERGED = "f_gpx_merged"
-CONFIG_F_GPX_MERGED_JSON = "f_gpx_merged_json"
-F_GPX_MERGED_ENV = "gpx_merged.env"
-F_GPX_MERGED = "gpx_merged.gpx"
-F_GPX_MERGED_JSON = "gpx_merged.json"
-
 F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
 
 # GEOREVERSE STRUCTURE
@@ -400,7 +390,7 @@ GEOREVERSE_METADATA_JSON: Dict = {
 # Collected Geo Information alongside with origin info
 GEOTRACK_INFO: Dict = {
     "geotrack_origin": None,
-    "me7taddata_geo": None,
+    "metadata_geo": None,
     "gps_info": {
         "datetime_camera_exif": None,
         "offset": 0,
@@ -1031,7 +1021,7 @@ class ImageOrganizer:
 
         # return the dict
         geo_info = GeoLocation.get_exiftool_reverse_geoinfo(_lat_lon, _file_name_absolute, 1)
-        track_info["metaddata_geo"] = geo_info
+        track_info["metadata_geo"] = geo_info
 
         return track_info
 
@@ -1051,18 +1041,16 @@ class ImageOrganizer:
         _f_reverse_geo = _path.joinpath(filename_reverse_geo)
         _reverse_geo_metadata: Dict = None
 
-        if _f_reverse_geo.is_file():
-            if overwrite:
-                print(f"{C_W}🚮 Overwrite existing Reverse Geo {C_F}[{_f_reverse_geo}]{C_0}")
-                os.remove(str(_f_reverse_geo))
-            else:
-                print(f"{C_H}🔢 Reverse Geo {C_F}[{_f_reverse_geo}]{C_H} exists, read from there{C_0}")
-                _reverse_geo_metadata = Persistence.read_json(_f_reverse_geo)
+        # load the buffered data if there
+        _reverse_geo = ReverseGeo(f_reverse_geo=_f_reverse_geo, load=True)
 
-        _reverse_geo = ReverseGeo()
+        # delete existing file if there
+        if overwrite:
+            _reverse_geo.delete()
 
         # read reverse info for osm link if existent
         _metadata_osm = metadata.get(METADATA_OSM, {})
+        _gps_track = metadata.get(GPS_TRACK, {}).get("track", {})
         _reverse_geo_osm = None
         _osm_filename = None
         if len(_metadata_osm) > 0:
@@ -1081,17 +1069,40 @@ class ImageOrganizer:
                 print(f"{C_W}🚨 [ImageOrganizer] the metadata segment image_geo_info is empty{C_0}")
                 return metadata
 
-            # read reverse info for all images
+            # read reverse info for all images and format a neat output
             for _filename, _geo_info in image_geo_info_dict.items():
-                _lat_lon = _geo_info["metaddata_geo"]["lat_lon"]
-                _ = _reverse_geo.read_geo_info(_lat_lon, ext_key=_filename)
+                # print(json.dumps(_geo_info, indent=4))
+                extra = {FILENAME: _filename}
+                add_text = None
+                timestamp = _geo_info["gps_info"]["timestamp_gps"]
+                if timestamp is not None:
+                    extra[TIMESTAMP_UTC] = int(timestamp)
+                    time_zone = _geo_info["metadata_geo"]["time_zone"]
+                    extra[TIMEZONE] = time_zone
+                    datetime_s = Helper.format_timestamp(timestamp, time_zone)
+                    extra[DATETIME] = datetime_s
+                    add_text = f"⌚ {C_Q}{datetime_s}"
+                    # also try to get the geotrack info from track
+                    _track_data = _gps_track.get(str(timestamp), {})
+                    # print(json.dumps(_track_data, indent=4))
+                    # get elevation and heart rate as well
+                    _ele = _track_data.get("ele")
+                    _hr = _track_data.get("extensions_trackpointextension_hr")
+                    if _ele:
+                        extra[ELEVATION] = int(_ele)
+                        add_text += f"{C_L} ⛰️ {int(_ele)}m"
+                    if _hr:
+                        extra[HEARTRATE] = int(_hr)
+                        add_text += f"{C_E} ❤️ {int(_hr)}"
+                _lat_lon = _geo_info["metadata_geo"]["lat_lon"]
+                _ = _reverse_geo.read_geo_info(_lat_lon, ext_key=_filename, add_text=add_text, extra=extra)
 
         _reverse_geo_metadata = _reverse_geo.get_geo_info_dict(as_ext_key=True)
         # update the metadata parts
         metadata[FILES][CONFIG_F_METADATA_GEO_REVERSE] = str(_f_reverse_geo)
         metadata[IMAGE_REVERSE_GEO_INFO] = _reverse_geo_metadata
         # save the metadata in a separate file
-        Persistence.save_json(_f_reverse_geo, _reverse_geo_metadata)
+        _reverse_geo.save()
 
         return metadata
 
@@ -1149,7 +1160,7 @@ class ImageOrganizer:
         if _has_osm_latlon:
             img_geo_osm_meta = deepcopy(GEOTRACK_INFO)
             img_geo_osm_meta["geotrack_origin"] = GEOTRACK_ORIGIN_OSM
-            img_geo_osm_meta["metaddata_geo"] = _metadata_osm
+            img_geo_osm_meta["metadata_geo"] = _metadata_osm
             img_geo_osm_lat_lon = str(_metadata_osm[LAT_LON])
             f_osm = Path(_metadata_osm["file"]).name
 

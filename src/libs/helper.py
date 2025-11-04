@@ -39,6 +39,44 @@ class Helper:
     """Some Helper Functions"""
 
     @staticmethod
+    def format_timestamp(timestamp: int, timezone_s: str = "Europe/Berlin", format_s: str = "%Y:%m:%d %H:%M:%S") -> str:
+        """
+        Convert a Unix timestamp to a formatted date string in a specified timezone.
+
+        Parameters:
+        - timestamp (int): The Unix timestamp to convert. Can be either:
+            - 10 digits (seconds since epoch)
+            - 13 digits (milliseconds since epoch)
+        - timezone_str (str): IANA timezone name (e.g., "Europe/Berlin"). Defaults to "Europe/Berlin".
+        - fmt (str): Format string for output, following Python's strftime directives.
+            Defaults to "%Y:%m:%d %H:%M:%S".
+
+        Returns:
+        - str: The formatted date string in the specified timezone.
+
+        Raises:
+        - ValueError: If the timestamp is not 10 or 13 digits, or if the timezone is invalid.
+        """
+
+        ts_str = str(timestamp)
+        if len(ts_str) == 13:
+            timestamp /= 1000
+        elif len(ts_str) != 10:
+            raise ValueError("Timestamp must be either 10 or 13 digits long")
+
+        # Convert to UTC datetime
+        dt_utc = DateTime.fromtimestamp(timestamp, tz=timezone.utc)
+
+        # Convert to target timezone
+        try:
+            dt_local = dt_utc.astimezone(ZoneInfo(timezone_s))
+        except Exception as e:
+            raise ValueError(f"Invalid timezone: {timezone_s}") from e
+
+        # Format and return
+        return dt_local.strftime(format_s)
+
+    @staticmethod
     def format_seconds_offset(offset_s: int) -> str:
         """Format offset as (+/-)HH:MM.SS String"""
         sign = "+" if offset_s >= 0 else "-"
