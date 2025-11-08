@@ -2028,8 +2028,6 @@ class ImageOrganizer:
         Returns:
             List[str]: List of filenames that could not be moved due to missing key in dictionary.
         """
-        p = r"C:\Users\Henrik\Desktop\root\20250831_GPSTEST0"
-        fout = r"C:\Users\Henrik\Desktop\hugo.json"
 
         # files = list(input_folder.glob("*.*"))
         files = list(Path(p).glob("*.*"))
