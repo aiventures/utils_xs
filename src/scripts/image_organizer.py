@@ -171,6 +171,7 @@ Also add to the program
 """
 
 import argparse
+import unicodedata
 import datetime
 import json
 import os
@@ -265,6 +266,7 @@ from config.constants import (
     OFFSET_SECS,
     # TIMESTAMP_IMAGE,
     # GPS_METADATA,
+    TEMPERATURE,
     TIMESTAMP_UTC,
     TIMEZONE,
     TIMEZONE_DEFAULT,
@@ -929,6 +931,7 @@ class ImageOrganizer:
         timezone_s: str = TIMEZONE_DEFAULT,
         show_gps_image: bool = True,
         max_timediff: int = 300,
+        encoding: str = "latin1",
     ):
         self._timezone = timezone_s
         # get the work path
@@ -946,6 +949,9 @@ class ImageOrganizer:
         self._metadata: Dict = None
         # maximum time difference between EXIF Date and GPS Date allowed in seconds
         self._max_timediff = max_timediff
+        # file encoding might lead to issues on windows if not latin1 or cp1252
+        # utf-8 struggles in my case
+        self._encoding = encoding
 
     @staticmethod
     def get_img_geo_from_track(metadata_exif: Dict, gpx_sorter: BinarySorter, time_offset_secs: int = 0) -> Dict | None:
@@ -1088,12 +1094,17 @@ class ImageOrganizer:
                     # get elevation and heart rate as well
                     _ele = _track_data.get("ele")
                     _hr = _track_data.get("extensions_trackpointextension_hr")
+                    _temperature = _track_data.get("extensions_trackpointextension_atemp")
                     if _ele:
                         extra[ELEVATION] = int(_ele)
-                        add_text += f"{C_L} ⛰️ {int(_ele)}m"
+                        add_text += f"{C_L} ⛰️ {extra[ELEVATION]}m"
                     if _hr:
                         extra[HEARTRATE] = int(_hr)
-                        add_text += f"{C_E} ❤️ {int(_hr)}"
+                        add_text += f"{C_E} ❤️ {extra[HEARTRATE]}"
+                    if _temperature:
+                        extra[TEMPERATURE] = round(float(_temperature), 1)
+                        add_text += f"{C_E} 🌡️ {extra[TEMPERATURE]}°C"
+
                 _lat_lon = _geo_info["metadata_geo"]["lat_lon"]
                 _ = _reverse_geo.read_geo_info(_lat_lon, ext_key=_filename, add_text=add_text, extra=extra)
 
@@ -1395,7 +1406,8 @@ class ImageOrganizer:
         # command to geotag all elements in folder using an offset
         exif_cmd = CMD_EXIFTOOL_GEOTAG.copy()
         additional_params = [geosync, "-geotag", f_gpx_merged, str(p_source)]
-        exif_cmd.append(additional_params)
+        exif_cmd.extend(additional_params)
+        # exif_cmd.append(additional_params)
         output = CmdRunner.run_cmd_and_print(exif_cmd)
 
         return output
@@ -1450,7 +1462,7 @@ class ImageOrganizer:
         Persistence.save_json(f_metadata, metadata)
 
     @staticmethod
-    def extract_image_timestamp(filepath: Union[str, Path] = "") -> Dict[str, Any]:
+    def extract_image_timestamp(filepath: Union[str, Path] = "", encoding: str = "latin1") -> Dict[str, Any]:
         """
         Extract SubSecDateTimeOriginal from an image using exiftool and return timestamp info.
 
@@ -1505,6 +1517,8 @@ class ImageOrganizer:
 
         # Step 2: Run exiftool extracting Original DateTime Original
         cmd = CMD_EXIFTOOL_GET_DATE.copy()
+        # we need to add the encoding to handle special chars in filenames
+        cmd.extend(["-charset", f"filename={encoding}"])
         cmd.append(str(f))
 
         print(f"{C_T}Running exiftool command:{C_0} {cmd}")
@@ -1997,41 +2011,10 @@ class ImageOrganizer:
             if not folder_path.exists():
                 folder_path.mkdir(parents=True, exist_ok=True)
 
+    # TODO Create a method using exiftool -j -SubSec* -a -s *.jpg
+    # to create a json with date only and then move them accordingly
     @staticmethod
-    def show_progress(num_passed: int, total: int) -> None:
-        """
-        Display a progress bar on the terminal for file moving operations.
-
-        The progress bar uses colored block emojis and shows percentage and count.
-
-        Args:
-            num_moved (int): Number of files moved so far.
-            total (int): Total number of files to move.
-        """
-        percent = num_passed / total if total else 1.0
-        blocks_total = 20
-        blocks_done = int(percent * blocks_total)
-        blue_block = "🟦"
-        green_block = "🟩"
-        yellow_block = "🟨"
-        orange_block = "🟧"
-        red_block = "🟥"
-
-        if percent < 0.5:
-            progressbar = green_block * blocks_done + blue_block * (blocks_total - blocks_done)
-        elif percent < 1.0:
-            progressbar = (
-                green_block * 10 + yellow_block * (blocks_done - 10) + blue_block * (blocks_total - blocks_done)
-            )
-        else:
-            progressbar = green_block * 10 + yellow_block * 4 + orange_block * 4 + red_block * 2
-
-        percent_display = int(percent * 100)
-        sys.stdout.write(f"\r{C_T}Progress: {progressbar} {percent_display}% {C_I}({num_passed}/{total}){C_0}")
-        sys.stdout.flush()
-
-    @staticmethod
-    def move_files_by_date(input_folder: Path, output_root: Path, file_dict: Dict[str, dict]) -> List[str]:
+    def move_files_by_date(input_folder: Path = None, output_root: Path = None, encoding: str = "latin1") -> List[str]:
         """
         Move image files from input folder to dated subfolders in output root based on metadata keys.
 
@@ -2045,28 +2028,80 @@ class ImageOrganizer:
         Returns:
             List[str]: List of filenames that could not be moved due to missing key in dictionary.
         """
-        files = list(input_folder.glob("*.*"))
-        total_files = len(files)
+        p = r"C:\Users\Henrik\Desktop\root\20250831_GPSTEST0"
+        fout = r"C:\Users\Henrik\Desktop\hugo.json"
+
+        # files = list(input_folder.glob("*.*"))
+        files = list(Path(p).glob("*.*"))
+        files = [str(f) for f in files]
+        print(files)
+        # total_files = len(files)
         moved_count = 0
         errors = []
 
-        date_list = list(set(entry["date"] for entry in file_dict.values()))
-        ImageOrganizer.create_date_folders(output_root, date_list)
+        # Step 2: Run exiftool extracting Original DateTime Original
+        cmd = CMD_EXIFTOOL_GET_DATE.copy()
+        # we need to add the encoding to handle special chars in filenames
+        cmd.extend(["-charset", f"filename={encoding}"])
 
-        for i, file_path in enumerate(files, start=1):
-            key = ImageOrganizer.extract_number_key(file_path.name)
-            if key and key in file_dict:
-                date_folder = output_root / file_dict[key]["date"]
-                dest = date_folder / file_path.name
-                try:
-                    shutil.move(str(file_path), str(dest))
-                    moved_count += 1
-                except Exception:
-                    errors.append(file_path.name)
-            else:
-                errors.append(file_path.name)
-            ImageOrganizer.show_progress(i, total_files)
-        print()  # newline after progress bar
+        cwd = os.getcwd()
+        os.chdir(p)
+        image_dict = {}
+        num_files = len(files)
+        for idx, f in enumerate(files, start=1):
+            _f = Path(f).name
+            _suffix = Path(f).suffix[1:]
+            # print(_f, _suffix)
+            if _suffix not in SUFFIX_ARGS:
+                continue
+            _cmd = cmd.copy()
+            _cmd.append(_f)
+            # print(_cmd)
+            output_s = CmdRunner.run_cmd_and_print(_cmd, show=False, decode=True, encoding="cp1252")
+            Helper.show_progress(idx, num_files, "Process Files")
+            # print(output_s)
+            # output_dict = json.loads("\n".join(output_s))
+            if len(output_s) == 1:
+                image_dict[_f] = output_s[0]
+
+            # out = CmdRunner.run_cmd_and_stream(cmd, fout)
+            # print(out)
+        Helper.show_progress(num_files, num_files, "Finished File Processing")
+        print()
+        print(json.dumps(image_dict, indent=4, ensure_ascii=False))
+        os.chdir(cwd)
+
+        dates = []
+        move_dict: Dict[str, List] = {}
+        for _f_img, _date in image_dict.items():
+            _datetime = Helper.get_datetime_from_format_string(
+                _date, time_format="%Y:%m:%d %H:%M:%S.%f", timezone_s="Europe/Berlin"
+            )
+            _datetime_yyyymmdd = _datetime.strftime("%Y%m%d")
+            # print(_f_img, _date, _datetime_yyyymmdd)
+            if not _datetime_yyyymmdd in dates:
+                dates.append(_datetime_yyyymmdd)
+                move_dict[_datetime_yyyymmdd] = []
+            move_dict[_datetime_yyyymmdd].append(_f_img)
+        print(json.dumps(move_dict, indent=4, ensure_ascii=False))
+
+        # date_list = list(set(entry["date"] for entry in file_dict.values()))
+        # ImageOrganizer.create_date_folders(output_root, date_list)
+
+        # for i, file_path in enumerate(files, start=1):
+        #     key = ImageOrganizer.extract_number_key(file_path.name)
+        #     if key and key in file_dict:
+        #         date_folder = output_root / file_dict[key]["date"]
+        #         dest = date_folder / file_path.name
+        #         try:
+        #             shutil.move(str(file_path), str(dest))
+        #             moved_count += 1
+        #         except Exception:
+        #             errors.append(file_path.name)
+        #     else:
+        #         errors.append(file_path.name)
+        #     ImageOrganizer.show_progress(i, total_files)
+        # print()  # newline after progress bar
         return errors
 
     @staticmethod
@@ -2243,6 +2278,9 @@ def main() -> None:
     parser = ImageOrganizer.build_arg_parser()
     args = parser.parse_args()
 
+    # TMP
+    ImageOrganizer.move_files_by_date()
+
     # now performa all actions as controlled by input params
 
     # 1. write the metadata.json for all child paths
@@ -2277,6 +2315,7 @@ def main() -> None:
     # print(f"{C_PY}Processed metadata saved as file_dump.json in input folder.{C_0}")
 
     # # Move files by date
+    # TODO exiftool -j -SubSec* -a -s *.jpg
     # errors = move_files_by_date(input_folder, output_root, file_dict)
 
     # if errors:

@@ -39,6 +39,40 @@ class Helper:
     """Some Helper Functions"""
 
     @staticmethod
+    def show_progress(num_passed: int, total: int, text: str = None) -> None:
+        """
+        Display a progress bar on the terminal for file moving operations.
+
+        The progress bar uses colored block emojis and shows percentage and count.
+
+        Args:
+            num_moved (int): Number of files moved so far.
+            total (int): Total number of files to move.
+        """
+        percent = num_passed / total if total else 1.0
+        blocks_total = 20
+        blocks_done = int(percent * blocks_total)
+        blue_block = "🟦"
+        green_block = "🟩"
+        yellow_block = "🟨"
+        orange_block = "🟧"
+        red_block = "🟥"
+
+        if percent < 0.5:
+            progressbar = green_block * blocks_done + blue_block * (blocks_total - blocks_done)
+        elif percent < 1.0:
+            progressbar = (
+                green_block * 10 + yellow_block * (blocks_done - 10) + blue_block * (blocks_total - blocks_done)
+            )
+        else:
+            progressbar = green_block * 10 + yellow_block * 4 + orange_block * 4 + red_block * 2
+
+        percent_display = int(percent * 100)
+        output_text = text if text is not None else "Progress"
+        sys.stdout.write(f"\r{C_T}{output_text}: {progressbar} {percent_display}% {C_I}({num_passed}/{total}){C_0}")
+        sys.stdout.flush()
+
+    @staticmethod
     def format_timestamp(timestamp: int, timezone_s: str = "Europe/Berlin", format_s: str = "%Y:%m:%d %H:%M:%S") -> str:
         """
         Convert a Unix timestamp to a formatted date string in a specified timezone.
@@ -235,9 +269,10 @@ class CmdRunner:
             return False
 
     @staticmethod
-    def run_cmd_and_print(cmd: List[str], decode: bool = True, show: bool = False) -> list:
+    def run_cmd_and_print(cmd: List[str], decode: bool = True, show: bool = False, encoding: str = "latin1") -> list:
         """
         Run a command and print both stdout and stderr to the console in real time.
+
 
         Args:
             cmd (List[str]): The command to execute.
@@ -246,10 +281,17 @@ class CmdRunner:
             bool: True if the command succeeded, False otherwise.
         """
         out = []
-        # print("hugo cmd ", cmd)
 
         try:
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # encoding: latin1 / cp1252 (windows) / utf-8
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding=encoding,
+                # errors="replace",
+            )
 
             # Stream both stdout and stderr
             while True:

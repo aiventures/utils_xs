@@ -48,7 +48,7 @@ class ReverseGeo:
     def read_geo_info(
         self, lat_lon: Tuple | Dict, ext_key: str = None, add_text: str = None, extra: dict = None
     ) -> Dict:
-        """Gets the reverse Geo Coordinates, optionally using ecternal key"""
+        """Gets the reverse Geo Coordinates, optionally using external key"""
         _add_text = "" if add_text is None else add_text
         reverse_geo = None
 

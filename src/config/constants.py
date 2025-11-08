@@ -35,6 +35,7 @@ TIMEZONE_DEFAULT = "Europe/Berlin"
 # etxra gps data
 ELEVATION = "elevation"
 HEARTRATE = "heartrate"
+TEMPERATURE = "temperature"
 
 # All Metadata (the json template below)
 CONFIG_F_METADATA_ENV = "f_metadata_env"
