@@ -49,6 +49,8 @@ class Helper:
             num_moved (int): Number of files moved so far.
             total (int): Total number of files to move.
         """
+        if total == 0:
+            return
         percent = num_passed / total if total else 1.0
         blocks_total = 20
         blocks_done = int(percent * blocks_total)
@@ -71,6 +73,8 @@ class Helper:
         output_text = text if text is not None else "Progress"
         sys.stdout.write(f"\r{C_T}{output_text}: {progressbar} {percent_display}% {C_I}({num_passed}/{total}){C_0}")
         sys.stdout.flush()
+        if num_passed == total:
+            print()
 
     @staticmethod
     def format_timestamp(timestamp: int, timezone_s: str = "Europe/Berlin", format_s: str = "%Y:%m:%d %H:%M:%S") -> str:

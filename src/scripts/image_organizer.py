@@ -271,10 +271,11 @@ from config.constants import (
     TIMEZONE,
     TIMEZONE_DEFAULT,
 )
-from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
+from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTO_OUTPUT_ROOT
 from libs.binary_sorter import BinarySorter
 from libs.helper import CmdRunner, Helper, Persistence, Transformer
 from libs.reverse_geo import ReverseGeo
+from config.local_config import p_images_from, p_root_images
 
 # Paths from environemt
 # Define image suffixes and default paths
@@ -374,8 +375,8 @@ CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "
 CMD_EXIFTOOL_CREATE_WAYPOINTS = [CMD_EXIFTOOL, "-fileOrder", "gpsdatetime", "-ext", "jpg", "-p"]
 # exiftool_wpt.fmt . > out.gpx
 
-P_PHOTO_DUMP_DEFAULT = Path(MY_P_PHOTO_DUMP)
-P_PHOTOS_TRANSIENT_DEFAULT = Path(MY_P_PHOTOS_TRANSIENT)
+MY_P_PHOTO_DUMP = Path(MY_P_PHOTO_DUMP)
+P_PHOTO_OUTPUT_ROOT = Path(MY_P_PHOTO_OUTPUT_ROOT)
 
 F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
 
@@ -1998,23 +1999,7 @@ class ImageOrganizer:
         return last_number[-4:] if len(last_number) >= 4 else last_number
 
     @staticmethod
-    def create_date_folders(output_root: Path, date_list: List[str]) -> None:
-        """
-        Create directories named by dates in YYYYMMDD format inside the output root folder.
-
-        Args:
-            output_root (Path): Root folder where date folders should be created.
-            date_list (List[str]): List of date strings (YYYYMMDD).
-        """
-        for date_str in date_list:
-            folder_path = output_root / date_str
-            if not folder_path.exists():
-                folder_path.mkdir(parents=True, exist_ok=True)
-
-    # TODO Create a method using exiftool -j -SubSec* -a -s *.jpg
-    # to create a json with date only and then move them accordingly
-    @staticmethod
-    def move_files_by_date(input_folder: Path = None, output_root: Path = None, encoding: str = "latin1") -> List[str]:
+    def move_files_by_date(input_folder: Path = None, output_root: Path = None, encoding: str = "latin1") -> List[Path]:
         """
         Move image files from input folder to dated subfolders in output root based on metadata keys.
 
@@ -2026,113 +2011,161 @@ class ImageOrganizer:
             file_dict (Dict[str, dict]): Dictionary mapping keys to image metadata.
 
         Returns:
-            List[str]: List of filenames that could not be moved due to missing key in dictionary.
+            List[str]: List of Paths that were created
         """
+        if input_folder is None or input_folder.is_dir() is False:
+            print("{C_E}🚨 [ImageOrganizer] Invalid input folder{C_0}")
+            return
 
-        # files = list(input_folder.glob("*.*"))
-        files = list(Path(p).glob("*.*"))
-        files = [str(f) for f in files]
-        print(files)
-        # total_files = len(files)
-        moved_count = 0
+        if output_root is None or output_root.is_dir() is False:
+            print("{C_E}🚨 [ImageOrganizer] Invalid output folder{C_0}")
+            return
+
+        cwd = os.getcwd()
+        files = list(input_folder.glob("*.*"))
+        file_names = [Path(f).name for f in files]
+        num_files = len(file_names)
+        num_moved = 0
         errors = []
+        out = []
 
         # Step 2: Run exiftool extracting Original DateTime Original
         cmd = CMD_EXIFTOOL_GET_DATE.copy()
         # we need to add the encoding to handle special chars in filenames
         cmd.extend(["-charset", f"filename={encoding}"])
-
-        cwd = os.getcwd()
-        os.chdir(p)
+        os.chdir(str(input_folder))
         image_dict = {}
-        num_files = len(files)
-        for idx, f in enumerate(files, start=1):
-            _f = Path(f).name
-            _suffix = Path(f).suffix[1:]
-            # print(_f, _suffix)
+        num_files: int = len(file_names)
+        num_skipped_files: int = 0
+        for idx, f in enumerate(file_names, start=1):
+            Helper.show_progress(idx, num_files, "Process Files")
+            _f = Path(f)
+            _suffix = _f.suffix[1:]
             if _suffix not in SUFFIX_ARGS:
+                num_skipped_files += 1
                 continue
             _cmd = cmd.copy()
             _cmd.append(_f)
-            # print(_cmd)
-            output_s = CmdRunner.run_cmd_and_print(_cmd, show=False, decode=True, encoding="cp1252")
-            Helper.show_progress(idx, num_files, "Process Files")
-            # print(output_s)
-            # output_dict = json.loads("\n".join(output_s))
-            if len(output_s) == 1:
-                image_dict[_f] = output_s[0]
+            # encoding should be latin1 or cp1252
+            output_s = CmdRunner.run_cmd_and_print(_cmd, show=False, decode=True, encoding=encoding)
+            if len(output_s) == 1 and len(output_s[0]) > 0:
+                image_dict[str(_f)] = output_s[0]
+            else:
+                num_skipped_files += 1
 
-            # out = CmdRunner.run_cmd_and_stream(cmd, fout)
-            # print(out)
-        Helper.show_progress(num_files, num_files, "Finished File Processing")
-        print()
-        print(json.dumps(image_dict, indent=4, ensure_ascii=False))
-        os.chdir(cwd)
-
-        dates = []
+        # collect all files to be moved and paths to be created
         move_dict: Dict[str, List] = {}
+        dates = []
+        num_move_files = 0
         for _f_img, _date in image_dict.items():
             _datetime = Helper.get_datetime_from_format_string(
                 _date, time_format="%Y:%m:%d %H:%M:%S.%f", timezone_s="Europe/Berlin"
             )
             _datetime_yyyymmdd = _datetime.strftime("%Y%m%d")
-            # print(_f_img, _date, _datetime_yyyymmdd)
             if not _datetime_yyyymmdd in dates:
                 dates.append(_datetime_yyyymmdd)
                 move_dict[_datetime_yyyymmdd] = []
             move_dict[_datetime_yyyymmdd].append(_f_img)
-        print(json.dumps(move_dict, indent=4, ensure_ascii=False))
+            num_move_files += 1
 
-        # date_list = list(set(entry["date"] for entry in file_dict.values()))
-        # ImageOrganizer.create_date_folders(output_root, date_list)
+        # print(json.dumps(move_dict, indent=4, ensure_ascii=False))
 
-        # for i, file_path in enumerate(files, start=1):
-        #     key = ImageOrganizer.extract_number_key(file_path.name)
-        #     if key and key in file_dict:
-        #         date_folder = output_root / file_dict[key]["date"]
-        #         dest = date_folder / file_path.name
-        #         try:
-        #             shutil.move(str(file_path), str(dest))
-        #             moved_count += 1
-        #         except Exception:
-        #             errors.append(file_path.name)
-        #     else:
-        #         errors.append(file_path.name)
-        #     ImageOrganizer.show_progress(i, total_files)
-        # print()  # newline after progress bar
-        return errors
+        # create paths if not existing
+        for _date in dates:
+            _p_target = output_root.joinpath(_date)
+            _p_target.mkdir(parents=True, exist_ok=True)
+
+        num_files = len(move_dict)
+        moved_files = 0
+
+        for date, files in move_dict.items():
+            if len(files) == 0:
+                continue
+            path_date = output_root.joinpath(date)
+            out.append(path_date)
+            for file in files:
+                f_from = input_folder.joinpath(file)
+                f_target = path_date.joinpath(file)
+                try:
+                    shutil.move(f_from, f_target)
+                except Exception:
+                    errors.append(str(f_from))
+                moved_files += 1
+                Helper.show_progress(moved_files, num_move_files, "Move Files   ")
+        os.chdir(cwd)
+        return out
+
+    # @staticmethod
+    # def summarize_and_update_metadata(
+    #     output_root: Path, date_list: List[str], f_metadata_exif: str = F_METADATA_EXIF
+    # ) -> List[Dict[str, Union[str, int]]]:
+    #     """
+    #     For each YYYYMMDD folder in output_root, count the files and rerun exiftool to export metadata.json.
+    #     Displays exiftool progress and output during execution.
+    #     """
+    #     summary = []
+
+    #     for date_str in date_list:
+    #         folder_path = output_root / date_str
+    #         if folder_path.exists() and folder_path.is_dir():
+    #             files = list(folder_path.glob("*.*"))
+    #             file_count = len(files)
+    #             f_metadata = folder_path / f_metadata_exif
+
+    #             print(f"\n{C_T}### Writing Metadata: {C_P}{folder_path}{C_T} ---")
+    #             print(f"Found {C_I}{file_count}{C_T} files. Running exiftool...{C_0}")
+    #             # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
+    #             cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder_path)
+    #             cmd_output = CmdRunner.run_cmd_and_stream(cmd, f_metadata)
+    #             if not cmd_output:
+    #                 print(f"{C_E}🚨 Exiftool failed in folder {folder_path}{C_0}")
+    #                 continue
+    #             # save the fileref to the folder
+    #             Persistence.save_txt(folder_path / F_METADATA_EXIF_ENV, f_metadata)
+
+    #             summary.append({"date": date_str, "file_count": file_count})
+
+    #     return summary
 
     @staticmethod
-    def summarize_and_update_metadata(
-        output_root: Path, date_list: List[str], f_metadata_exif: str = F_METADATA_EXIF
-    ) -> List[Dict[str, Union[str, int]]]:
-        """
-        For each YYYYMMDD folder in output_root, count the files and rerun exiftool to export metadata.json.
-        Displays exiftool progress and output during execution.
-        """
-        summary = []
+    def validate_p_source(args: argparse.Namespace) -> Path | None:
+        """validates input folder if required"""
+        # Determine input folder
+        p_source = args.p_source
+        if p_source is None:
+            inp = input(f"{C_Q}Enter input folder path (default current folder): {C_0}").strip()
+            if inp:
+                p_source = Path(inp)
+            else:
+                p_source = Path.cwd()
+        else:
+            p_source = Path(p_source)
 
-        for date_str in date_list:
-            folder_path = output_root / date_str
-            if folder_path.exists() and folder_path.is_dir():
-                files = list(folder_path.glob("*.*"))
-                file_count = len(files)
-                f_metadata = folder_path / f_metadata_exif
+        if not p_source.exists() or not p_source.is_dir():
+            print(f"{C_E}🚨 Input folder {p_source} not found or invalid.{C_0}")
+            return None
 
-                print(f"\n{C_T}### Writing Metadata: {C_P}{folder_path}{C_T} ---")
-                print(f"Found {C_I}{file_count}{C_T} files. Running exiftool...{C_0}")
-                # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
-                cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder_path)
-                cmd_output = CmdRunner.run_cmd_and_stream(cmd, f_metadata)
-                if not cmd_output:
-                    print(f"{C_E}🚨 Exiftool failed in folder {folder_path}{C_0}")
-                    continue
-                # save the fileref to the folder
-                Persistence.save_txt(folder_path / F_METADATA_EXIF_ENV, f_metadata)
+        return p_source
 
-                summary.append({"date": date_str, "file_count": file_count})
+    @staticmethod
+    def cmd_validate_p_output(args: argparse.Namespace) -> Path | None:
+        """validates output folder if required"""
+        # Determine input folder
+        p_output = args.p_output
+        if p_output is None:
+            outp = input(f"{C_Q}Enter output folder path (default current folder): {C_0}").strip()
+            if outp:
+                p_output = Path(outp)
+            else:
+                p_output = Path.cwd()
+        else:
+            p_output = Path(p_output)
 
-        return summary
+        if not p_output.exists() or not p_output.is_dir():
+            print(f"{C_E}🚨 Input folder {p_output} not found or invalid.{C_0}")
+            return None
+
+        return p_output
 
     @staticmethod
     def build_arg_parser() -> argparse.ArgumentParser:
@@ -2158,7 +2191,7 @@ class ImageOrganizer:
             "--p_output",
             type=str,
             default=None,
-            help=f"Output root folder where date folders are created (default: {P_PHOTOS_TRANSIENT_DEFAULT})",
+            help=f"Output root folder where date folders are created (default: {str(P_PHOTO_OUTPUT_ROOT)})",
         )
         parser.add_argument(
             "-aju",
@@ -2209,9 +2242,9 @@ class ImageOrganizer:
         p_root = args.p_source
         if p_root is None:
             outp = input(
-                f"{C_Q}Enter source root folder path for update (default {P_PHOTOS_TRANSIENT_DEFAULT}): {C_0}"
+                f"{C_Q}Enter source root folder path for update (default {P_PHOTO_OUTPUT_ROOT}): {C_0}"
             ).strip()
-            p_root = Path(outp) if outp else P_PHOTOS_TRANSIENT_DEFAULT
+            p_root = Path(outp) if outp else P_PHOTO_OUTPUT_ROOT
         else:
             p_root = Path(p_root)
 
@@ -2222,46 +2255,6 @@ class ImageOrganizer:
         ImageOrganizer.update_metadata_recursive(p_root)
 
         return True
-
-    @staticmethod
-    def validate_p_source(args: argparse.Namespace) -> Path | None:
-        """validates input folder if required"""
-        # Determine input folder
-        p_source = args.p_source
-        if p_source is None:
-            inp = input(f"{C_Q}Enter input folder path (default current folder): {C_0}").strip()
-            if inp:
-                p_source = Path(inp)
-            else:
-                p_source = Path.cwd()
-        else:
-            p_source = Path(p_source)
-
-        if not p_source.exists() or not p_source.is_dir():
-            print(f"{C_E}🚨 Input folder {p_source} not found or invalid.{C_0}")
-            return None
-
-        return p_source
-
-    @staticmethod
-    def cmd_validate_p_output(args: argparse.Namespace) -> Path | None:
-        """validates output folder if required"""
-        # Determine input folder
-        p_output = args.p_output
-        if p_output is None:
-            outp = input(f"{C_Q}Enter output folder path (default current folder): {C_0}").strip()
-            if outp:
-                p_output = Path(outp)
-            else:
-                p_output = Path.cwd()
-        else:
-            p_output = Path(p_output)
-
-        if not p_output.exists() or not p_output.is_dir():
-            print(f"{C_E}🚨 Input folder {p_output} not found or invalid.{C_0}")
-            return None
-
-        return p_output
 
 
 def main() -> None:
@@ -2276,15 +2269,20 @@ def main() -> None:
     parser = ImageOrganizer.build_arg_parser()
     args = parser.parse_args()
 
-    # TMP
-    ImageOrganizer.move_files_by_date()
+    # Preparation step: Create folders and move image files
+    p_image_folders = []
+    if True:
+        p_from = Path(p_images_from)
+        p_to = Path(p_root_images)
+        p_image_folders = ImageOrganizer.move_files_by_date(p_from, p_to, encoding="latin1")
+    print(p_image_folders)
 
     # now performa all actions as controlled by input params
 
     # 1. write the metadata.json for all child paths
-    success = ImageOrganizer.action_update_metadata_recursive(args)
+    # success = ImageOrganizer.action_update_metadata_recursive(args)
     # 2. prepare the metadata for a dedicated output folder
-    success = ImageOrganizer.action_prepare_geo_meta(args)
+    # success = ImageOrganizer.action_prepare_geo_meta(args)
 
     # Determine output root folder
     # output_root = args.output
