@@ -933,6 +933,8 @@ class ImageOrganizer:
         show_gps_image: bool = True,
         max_timediff: int = 300,
         encoding: str = "latin1",
+        f_metadata: str = F_METADATA,
+        f_reverse_geo: str = F_METADATA_GEO_REVERSE,
     ):
         self._timezone = timezone_s
         # get the work path
@@ -942,7 +944,7 @@ class ImageOrganizer:
         if not _path.is_dir():
             print(f"{C_E}🚨 [ImageOrganizer] No valid path {_path}{C_0}")
             return
-        self._path: Path = _path
+        self._path: Path = _path.absolute()
         # setting the file names
         # variables to keep
         self._show_gps_image: bool = show_gps_image
@@ -953,6 +955,10 @@ class ImageOrganizer:
         # file encoding might lead to issues on windows if not latin1 or cp1252
         # utf-8 struggles in my case
         self._encoding = encoding
+        # name of the metadata file containing everything
+        self._f_metadata = f_metadata
+        # name of the reverse geo file
+        self._f_reverse_geo = f_reverse_geo
 
     @staticmethod
     def get_img_geo_from_track(metadata_exif: Dict, gpx_sorter: BinarySorter, time_offset_secs: int = 0) -> Dict | None:
@@ -1032,20 +1038,20 @@ class ImageOrganizer:
 
         return track_info
 
-    @staticmethod
     def process_reverse_geo_metadata(
-        metadata: dict,
-        path: Optional[Path] = None,
-        filename_reverse_geo: str = F_METADATA_GEO_REVERSE,
+        self,
         overwrite: bool = False,
     ) -> Dict:
         """Based on the metadata file, collect metadata for all images"""
+        if self._metadata is None:
+            print(f"{C_E}🚨 No Metadata available, did you run merge_metadata ?{C_0}")
+            return {}
 
-        _path = Path(path)
-        if _path is None:
-            _path = Path.cwd()
+        _metadata = self._metadata
+        _path = self._path
+
         # get the data from buffered data already
-        _f_reverse_geo = _path.joinpath(filename_reverse_geo)
+        _f_reverse_geo = _path.joinpath(self._f_reverse_geo)
         _reverse_geo_metadata: Dict = None
 
         # load the buffered data if there
@@ -1056,8 +1062,8 @@ class ImageOrganizer:
             _reverse_geo.delete()
 
         # read reverse info for osm link if existent
-        _metadata_osm = metadata.get(METADATA_OSM, {})
-        _gps_track = metadata.get(GPS_TRACK, {}).get("track", {})
+        _metadata_osm = _metadata.get(METADATA_OSM, {})
+        _gps_track = _metadata.get(GPS_TRACK, {}).get("track", {})
         _reverse_geo_osm = None
         _osm_filename = None
         if len(_metadata_osm) > 0:
@@ -1071,10 +1077,10 @@ class ImageOrganizer:
             print(f"{C_H}🌍 Reading reverse geo info from reverse geo service{C_0}")
 
             # it will be assumed the geo info was collected prior to calling this function
-            image_geo_info_dict: Dict = metadata.get(IMAGE_GEO_INFO, {})
+            image_geo_info_dict: Dict = _metadata.get(IMAGE_GEO_INFO, {})
             if len(image_geo_info_dict) == 0:
                 print(f"{C_W}🚨 [ImageOrganizer] the metadata segment image_geo_info is empty{C_0}")
-                return metadata
+                return _metadata
 
             # read reverse info for all images and format a neat output
             for _filename, _geo_info in image_geo_info_dict.items():
@@ -1111,25 +1117,23 @@ class ImageOrganizer:
 
         _reverse_geo_metadata = _reverse_geo.get_geo_info_dict(as_ext_key=True)
         # update the metadata parts
-        metadata[FILES][CONFIG_F_METADATA_GEO_REVERSE] = str(_f_reverse_geo)
-        metadata[IMAGE_REVERSE_GEO_INFO] = _reverse_geo_metadata
+        _metadata[FILES][CONFIG_F_METADATA_GEO_REVERSE] = str(_f_reverse_geo)
+        _metadata[IMAGE_REVERSE_GEO_INFO] = _reverse_geo_metadata
         # save the metadata in a separate file
         _reverse_geo.save()
+        return _metadata
 
-        return metadata
-
-    @staticmethod
-    def process_geo_metadata(
-        path: Optional[Path] = None, filename_metadata: str = F_METADATA, metadata: dict = None
-    ) -> Dict:
+    def process_geo_metadata(self) -> Dict:
         """Based on the metadata file, collect metadata for all images"""
-        _path = Path(path)
-        if _path is None:
-            _path = Path.cwd()
-        _metadata = metadata
+        _path = self._path
+        if self._metadata is None:
+            print(f"{C_E}🚨 No Metadata available, did you run merge_metadata ?{C_0}")
+            return {}
+
+        _metadata = self._metadata
         # get the metadata dict either from parameters or from file
         if not _metadata:
-            _f_metadata_json = _path.joinpath(filename_metadata)
+            _f_metadata_json = _path.joinpath(self._f_metadata)
             if not _f_metadata_json.is_file():
                 print(f"{C_E}🚨 Metadata File [{_f_metadata_json}] wasn't found {C_0}")
                 return
@@ -1157,7 +1161,7 @@ class ImageOrganizer:
         _timezone = _metadata_osm.get("timezone", "Europe/Berlin")
         _gpx_sorter = None
 
-        print(f"{C_T}### Collecting Image Metadata in path {C_F}[{path}]{C_0}")
+        print(f"{C_T}### Collecting Image Metadata in path {C_F}[{str(_path)}]{C_0}")
         if _has_osm_latlon:
             print(f"{C_H}    🎯 OSM Fallback: {_osm_latlon}, {_osm_geo_info}{C_0}")
         if _has_gps_track:
@@ -1177,7 +1181,7 @@ class ImageOrganizer:
             f_osm = Path(_metadata_osm["file"]).name
 
         # now get alle gps corrdinates
-        print(f"{C_T}### Processing Images {C_F}[{path}]{C_0}")
+        print(f"{C_T}### Processing Images {C_F}[{str(_path)}]{C_0}")
         for _f_img, _img_meta in _metadata_exif.items():
             img_geo: Dict = None
 
@@ -1199,16 +1203,13 @@ class ImageOrganizer:
 
         return _metadata
 
-    @staticmethod
-    def merge_metadata(path: Optional[Path] = None) -> Dict:
+    def merge_metadata(self) -> Dict:
         """Reads all metadata and writes them to a merged JSON.
         General Idea: Read available evn files from FILES_ENV
         and transfer the data to FILES or other segments of the file,
         if present
         """
-        _path = Path(path)
-        if _path is None:
-            _path = Path.cwd()
+        _path = self._path
         print(f"\n{C_T}### Merge Image Metadata in {C_F}[{_path}]{C_0}")
 
         config_metadata = deepcopy(CONFIG_METADATA)
@@ -1323,6 +1324,7 @@ class ImageOrganizer:
                 continue
             map_json["dict"][map_json["target"]] = Persistence.read_json(file_ref)
 
+        self._metadata = config_metadata
         return config_metadata
 
     @staticmethod
@@ -1372,8 +1374,7 @@ class ImageOrganizer:
         t_offset = "+00:00:00" if len(lines) == 0 else lines[0]
         return f"-geosync={t_offset}"
 
-    @staticmethod
-    def get_exiftool_cmd_export_meta(input_folder: Path, recursive: bool = True) -> list:
+    def get_exiftool_cmd_export_meta(self, recursive: bool = False) -> list:
         """creates the exiftool command to export image data as json"""
 
         # command to export all exifdata in groups as json for given suffixes
@@ -1381,7 +1382,7 @@ class ImageOrganizer:
         # the c command is to format gps coordinates as decimals
         exiftool_cmd = CMD_EXIFTOOL_EXPORT_METADATA_RECURSIVE if recursive else CMD_EXIFTOOL_EXPORT_METADATA
         exif_cmd = exiftool_cmd.copy()
-        exif_cmd.append(str(input_folder))
+        exif_cmd.append(str(self._path))
         return exif_cmd
 
     @staticmethod
@@ -1426,7 +1427,7 @@ class ImageOrganizer:
         # 0. Delete any temporary files
         self.cleanup_env_files(delete_generated_files=True)
         # Create the EXIF metadata
-        cmd = ImageOrganizer.get_exiftool_cmd_export_meta(self._path, recursive=False)
+        cmd = self.get_exiftool_cmd_export_meta()
         print("HUGO create Metadata:", cmd)
         f_metadata_exif = self._path.joinpath(F_METADATA_EXIF)
         _ = CmdRunner.run_cmd_and_stream(cmd, f_metadata_exif)
@@ -1443,7 +1444,7 @@ class ImageOrganizer:
         timstamp_dict_camera = ImageOrganizer.extract_image_timestamp(self._path)
         # 3. Now Get the GPS Timestamp (as seen on the image of the previous image)
         print("HUGO calculate_time_offset")
-        time_offset = ImageOrganizer.calculate_time_offset(self._path, self._show_gps_image)
+        time_offset = self.calculate_time_offset()
         # 4. Extract the OSM Link as default GPS Coordinates
         print("HUGO get_openstreetmap_coordinates_from_folder")
         # 5. create a dict with all geo info metadata from osm link
@@ -1451,19 +1452,17 @@ class ImageOrganizer:
         _ = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, self._path)
         Persistence.save_txt(self._path.joinpath(F_OSM_ENV), str(self._path.joinpath(f_osm_info)))
         # 6. Create a metadata json containing everything
-        metadata = ImageOrganizer.merge_metadata(self._path)
+        _ = self.merge_metadata()
         # 7. Get the GPS metadata
-        metadata = ImageOrganizer.process_geo_metadata(path=self._path, metadata=metadata)
+        _ = self.process_geo_metadata()
         # 8. Get the reverse geo data / TODO make this optional
-        metadata = ImageOrganizer.process_reverse_geo_metadata(
-            metadata, path=self._path, filename_reverse_geo=F_METADATA_GEO_REVERSE, overwrite=True
-        )
+        # TODO get the
+        metadata = self.process_reverse_geo_metadata(overwrite=True)
         # 9.. Save all Data to a big metadata.json
         f_metadata = metadata[FILES][CONFIG_F_METADATA]
         Persistence.save_json(f_metadata, metadata)
 
-    @staticmethod
-    def extract_image_timestamp(filepath: Union[str, Path] = "", encoding: str = "latin1") -> Dict[str, Any]:
+    def extract_image_timestamp(self) -> Dict[str, Any]:
         """
         Extract SubSecDateTimeOriginal from an image using exiftool and return timestamp info.
 
@@ -1480,16 +1479,8 @@ class ImageOrganizer:
         """
         # check for input and resaolve paths or files
         f = None
-        p = Path.cwd()
-        if isinstance(p, str):
-            p = Path(filepath)
-        if p.is_file():
-            f = p
-            p = p.parent
-        elif filepath.is_dir():
-            p = filepath
+        p: Path = self._path
         # now determine file path
-
         if f is None:
             f = p / F_TIMESTAMP_IMG_DEFAULT
             # fallback no default gps image found ask user to enter
@@ -1510,7 +1501,7 @@ class ImageOrganizer:
                     return {}
 
         if not f.exists():
-            print(f"{C_E}🚨 File not found: {filepath}{C_0}")
+            print(f"{C_E}🚨 File not found: {self._path}{C_0}")
             return {}
 
         # save the timestamp image file to an env file
@@ -1519,7 +1510,7 @@ class ImageOrganizer:
         # Step 2: Run exiftool extracting Original DateTime Original
         cmd = CMD_EXIFTOOL_GET_DATE.copy()
         # we need to add the encoding to handle special chars in filenames
-        cmd.extend(["-charset", f"filename={encoding}"])
+        cmd.extend(["-charset", f"filename={self._encoding}"])
         cmd.append(str(f))
 
         print(f"{C_T}Running exiftool command:{C_0} {cmd}")
@@ -1625,10 +1616,7 @@ class ImageOrganizer:
             print(f"{C_PY}🚮 Deleting {C_F}[{f_env}]{C_0}")
             # f_env.unlink(missing_ok=True)
 
-    @staticmethod
-    def calculate_time_offset(
-        p_source: Path = None, show_gps_image: bool = True, timezone: str = "Europe/Berlin"
-    ) -> str:
+    def calculate_time_offset(self) -> str:
         """
         Calculate the time offset between camera and GPS timestamps and save results.
         T_GPS + T_OFFSET = T_CAMERA
@@ -1650,11 +1638,10 @@ class ImageOrganizer:
         Returns:
             str: The formatted offset string in hh:mm:ss format.
         """
-        folder = p_source if p_source else Path.cwd()
-        offset_file = folder / F_OFFSET_ENV
-        offset_file_sec = folder / F_OFFSET_SECS_ENV
-        gps_json_file = folder / F_TIMESTAMP_GPS
-        camera_json_file = folder / F_TIMESTAMP_CAMERA
+        offset_file = self._path / F_OFFSET_ENV
+        offset_file_sec = self._path / F_OFFSET_SECS_ENV
+        gps_json_file = self._path / F_TIMESTAMP_GPS
+        camera_json_file = self._path / F_TIMESTAMP_CAMERA
 
         # Step 1: Remove existing offset file
         if offset_file.exists():
@@ -1687,7 +1674,7 @@ class ImageOrganizer:
             if not gps_data:
                 print(f"{C_E}🚨 Missing TIMESTAMP_GPS.json. Please enter GPS time manually{C_0}")
                 f_image = Path(camera_data.get("filename", "NA"))
-                if f_image.is_file and show_gps_image:
+                if f_image.is_file and self._show_gps_image:
                     print(f"{C_H}Show Image [{f_image}]{C_0}")
                     ImageOrganizer.show_image(f_image)
 
@@ -1699,7 +1686,7 @@ class ImageOrganizer:
                     while len(parts) < 3:
                         parts.append(0)
                     hour, minute, second = parts[:3]
-                    local_zone = ZoneInfo(timezone)
+                    local_zone = ZoneInfo(self._timezone)
 
                     # use date from camera and rest from input
                     dt_local = DateTime(
@@ -1810,155 +1797,155 @@ class ImageOrganizer:
         # exiftool -geosync=+00:00:00 -geotag track.gpx *.jpg
         os.chdir(p_cwd)
 
-    @staticmethod
-    def exiftool_create_metadata_recursive(p_source: Path, f_metadata_exif: str = F_METADATA_EXIF) -> None:
-        """
-        Execute exiftool to extract metadata from image files in the input folder recursively.
+    # @staticmethod
+    # def exiftool_create_metadata_recursive(p_source: Path, f_metadata_exif: str = F_METADATA_EXIF) -> None:
+    #     """
+    #     Execute exiftool to extract metadata from image files in the input folder recursively.
 
-        Runs exiftool with options to generate JSON metadata including specified image extensions,
-        and writes the output to 'F_METADATA_EXIF' inside the output root folder.
+    #     Runs exiftool with options to generate JSON metadata including specified image extensions,
+    #     and writes the output to 'F_METADATA_EXIF' inside the output root folder.
 
-        Args:
-            input_folder (Path): Folder path containing images to analyze.
-            output_root (Path): Folder where F_METADATA_EXIF will be saved.
+    #     Args:
+    #         input_folder (Path): Folder path containing images to analyze.
+    #         output_root (Path): Folder where F_METADATA_EXIF will be saved.
 
-        Prints:
-            Status messages and exiftool progress output.
-        """
+    #     Prints:
+    #         Status messages and exiftool progress output.
+    #     """
 
-        output_path = p_source / f_metadata_exif
-        # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
-        cmd = ImageOrganizer.get_exiftool_cmd_export_meta(p_source)
+    #     output_path = p_source / f_metadata_exif
+    #     # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
+    #     cmd = ImageOrganizer.get_exiftool_cmd_export_meta(p_source)
 
-        cmd_output = CmdRunner.run_cmd_and_stream(cmd, output_path)
-        if cmd_output:
-            print(f"{C_H}Metadata successfully saved  {C_P}{output_path}{C_0}")
-            Persistence.save_txt(p_source / F_METADATA_EXIF_ENV, output_path)
-        else:
-            print(f"{C_E}🚨 Exiftool failed for command [{p_source}{C_0}]")
+    #     cmd_output = CmdRunner.run_cmd_and_stream(cmd, output_path)
+    #     if cmd_output:
+    #         print(f"{C_H}Metadata successfully saved  {C_P}{output_path}{C_0}")
+    #         Persistence.save_txt(p_source / F_METADATA_EXIF_ENV, output_path)
+    #     else:
+    #         print(f"{C_E}🚨 Exiftool failed for command [{p_source}{C_0}]")
 
-    @staticmethod
-    def get_unprocessed_files(
-        p_source: Union[str, Path], f_out: Optional[Union[str, Path]] = None
-    ) -> Dict[str, List[str]]:
-        """
-        Identify image files in the folder that lack corresponding backup files.
+    # @staticmethod
+    # def get_unprocessed_files(
+    #     p_source: Union[str, Path], f_out: Optional[Union[str, Path]] = None
+    # ) -> Dict[str, List[str]]:
+    #     """
+    #     Identify image files in the folder that lack corresponding backup files.
 
-        For each file with a suffix in IMAGE_SUFFIXES, check if a backup file
-        with the same name and suffix "<suffix>_original" exists. If not, add
-        the full path to the output dictionary under "files_unprocessed".
+    #     For each file with a suffix in IMAGE_SUFFIXES, check if a backup file
+    #     with the same name and suffix "<suffix>_original" exists. If not, add
+    #     the full path to the output dictionary under "files_unprocessed".
 
-        Args:
-            folder (Union[str, Path]): Path to the folder to scan.
-            f_out (Optional[Union[str, Path]]): Optional path or filename to save the output dictionary.
+    #     Args:
+    #         folder (Union[str, Path]): Path to the folder to scan.
+    #         f_out (Optional[Union[str, Path]]): Optional path or filename to save the output dictionary.
 
-        Returns:
-            Dict[str, List[str]]: Dictionary with key "files_unprocessed" and list of unmatched file paths.
+    #     Returns:
+    #         Dict[str, List[str]]: Dictionary with key "files_unprocessed" and list of unmatched file paths.
 
-        PROMPT
-        Now add a function get_unprocessed_files that does the following:
-        - For a given path it reads all files with the given suffix <suffix> defined in IMAGE_SUFFIXES
-        - Check if for such a file a backup file having the same name and the suffix <suffix>_original exists
-        - if it doesn't exist, add the full path of this file to an output dict under the attribute "files_unprocessed"
-        - as output return this dictionary
-        - Add an input param f_out to the function: if it's None, do nothing. if it is a string or path, save this dictionary under
-        the path given by f_out. if it's just a name and not an absolute path, then use the current directory as save path
+    #     PROMPT
+    #     Now add a function get_unprocessed_files that does the following:
+    #     - For a given path it reads all files with the given suffix <suffix> defined in IMAGE_SUFFIXES
+    #     - Check if for such a file a backup file having the same name and the suffix <suffix>_original exists
+    #     - if it doesn't exist, add the full path of this file to an output dict under the attribute "files_unprocessed"
+    #     - as output return this dictionary
+    #     - Add an input param f_out to the function: if it's None, do nothing. if it is a string or path, save this dictionary under
+    #     the path given by f_out. if it's just a name and not an absolute path, then use the current directory as save path
 
-        """
-        p_source = Path(p_source).resolve()
-        output_dict = {"files_unprocessed": []}
+    #     """
+    #     p_source = Path(p_source).resolve()
+    #     output_dict = {"files_unprocessed": []}
 
-        for suffix in IMAGE_SUFFIXES:
-            pattern = f"*.{suffix}"
-            for file_path in p_source.glob(pattern):
-                backup_name = file_path.stem + f".{suffix}_original"
-                backup_path = p_source / backup_name
-                if not backup_path.exists():
-                    output_dict["files_unprocessed"].append(str(file_path))
+    #     for suffix in IMAGE_SUFFIXES:
+    #         pattern = f"*.{suffix}"
+    #         for file_path in p_source.glob(pattern):
+    #             backup_name = file_path.stem + f".{suffix}_original"
+    #             backup_path = p_source / backup_name
+    #             if not backup_path.exists():
+    #                 output_dict["files_unprocessed"].append(str(file_path))
 
-        # Save output if f_out is provided
-        if f_out:
-            f_out_path = Path(f_out)
-            if not f_out_path.is_absolute():
-                f_out_path = Path.cwd() / f_out_path
-            Persistence.save_json(f_out_path, output_dict)
+    #     # Save output if f_out is provided
+    #     if f_out:
+    #         f_out_path = Path(f_out)
+    #         if not f_out_path.is_absolute():
+    #             f_out_path = Path.cwd() / f_out_path
+    #         Persistence.save_json(f_out_path, output_dict)
 
-        return output_dict
+    #     return output_dict
 
-    @staticmethod
-    def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
-        """
-        Process the metadata JSON file to build a dictionary keyed by last four digits of filenames.
+    # @staticmethod
+    # def process_metadata_json(metadata_path: Path) -> Dict[str, dict]:
+    #     """
+    #     Process the metadata JSON file to build a dictionary keyed by last four digits of filenames.
 
-        Extracts datetime from 'SubSecDateTimeOriginal', converts it to a datetime object,
-        extracts date string in YYYYMMDD format, and organizes data for each image.
+    #     Extracts datetime from 'SubSecDateTimeOriginal', converts it to a datetime object,
+    #     extracts date string in YYYYMMDD format, and organizes data for each image.
 
-        Args:
-            metadata_path (Path): Path to the metadata JSON file.
+    #     Args:
+    #         metadata_path (Path): Path to the metadata JSON file.
 
-        Returns:
-            Dict[str, dict]: Dictionary mapping 4-digit keys to metadata with keys:
-                            'key', 'filename', 'datetime_created' (datetime object), and 'date' string.
-        """
-        raw_data = Persistence.read_json(metadata_path)
-        output_dict = {}
-        if len(raw_data) == 0:
-            return {}
+    #     Returns:
+    #         Dict[str, dict]: Dictionary mapping 4-digit keys to metadata with keys:
+    #                         'key', 'filename', 'datetime_created' (datetime object), and 'date' string.
+    #     """
+    #     raw_data = Persistence.read_json(metadata_path)
+    #     output_dict = {}
+    #     if len(raw_data) == 0:
+    #         return {}
 
-        for entry in raw_data:
-            try:
-                source_file = entry["SourceFile"]
-                dt_str = entry["Composite"]["SubSecDateTimeOriginal"]
-                # transform dashes since they seem to lead to date
-                # interpolation erorrs
-                # 2025-10-06T19:03:19.400000+02:00
-                dt_str = dt_str.replace(":", "-", 2)
-                dt_obj = date_parser.parse(dt_str)
-                date_str = dt_obj.strftime("%Y%m%d")
-                filename = Path(source_file).name
-                key = filename[-8:-4]  # last 4 digits as key
-                output_dict[key] = {"key": key, "filename": filename, "datetime_created": dt_obj, "date": date_str}
-            except Exception:
-                # Skip entries missing required fields or malformed
-                print(f"Error trying to parse {entry}")
-                continue
-        return output_dict
+    #     for entry in raw_data:
+    #         try:
+    #             source_file = entry["SourceFile"]
+    #             dt_str = entry["Composite"]["SubSecDateTimeOriginal"]
+    #             # transform dashes since they seem to lead to date
+    #             # interpolation erorrs
+    #             # 2025-10-06T19:03:19.400000+02:00
+    #             dt_str = dt_str.replace(":", "-", 2)
+    #             dt_obj = date_parser.parse(dt_str)
+    #             date_str = dt_obj.strftime("%Y%m%d")
+    #             filename = Path(source_file).name
+    #             key = filename[-8:-4]  # last 4 digits as key
+    #             output_dict[key] = {"key": key, "filename": filename, "datetime_created": dt_obj, "date": date_str}
+    #         except Exception:
+    #             # Skip entries missing required fields or malformed
+    #             print(f"Error trying to parse {entry}")
+    #             continue
+    #     return output_dict
 
-    @staticmethod
-    def update_metadata_recursive(p_root: Path, f_metadata_exif: str = F_METADATA_EXIF) -> None:
-        """
-        Run exiftool on all first-level subfolders of output_root to update metadata.json files.
-        Skips the root folder itself.
+    # @staticmethod
+    # def update_metadata_recursive(p_root: Path, f_metadata_exif: str = F_METADATA_EXIF) -> None:
+    #     """
+    #     Run exiftool on all first-level subfolders of output_root to update metadata.json files.
+    #     Skips the root folder itself.
 
-        Args:
-            output_root (Path): The root folder containing dated subfolders.
-        """
-        child_folders = [f for f in p_root.iterdir() if f.is_dir()]
-        summary = []
+    #     Args:
+    #         output_root (Path): The root folder containing dated subfolders.
+    #     """
+    #     child_folders = [f for f in p_root.iterdir() if f.is_dir()]
+    #     summary = []
 
-        print(f"\n{C_T}### Updating metadata.json in {len(child_folders)} subfolders...{C_0}")
-        for folder in child_folders:
-            metadata_path = folder / f_metadata_exif
-            files = list(folder.glob("*.*"))
-            file_count = len(files)
+    #     print(f"\n{C_T}### Updating metadata.json in {len(child_folders)} subfolders...{C_0}")
+    #     for folder in child_folders:
+    #         metadata_path = folder / f_metadata_exif
+    #         files = list(folder.glob("*.*"))
+    #         file_count = len(files)
 
-            print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
-            # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
-            cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder)
-            cmd_output = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
-            status = "✅ Success" if cmd_output else "❌ Failed"
-            summary.append({"folder": folder.name, "file_count": file_count, "status": status})
-            if "failed" in status.lower():
-                continue
-            # save the env file
-            Persistence.save_txt(folder / F_METADATA_EXIF_ENV, metadata_path)
+    #         print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
+    #         # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
+    #         cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder)
+    #         cmd_output = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
+    #         status = "✅ Success" if cmd_output else "❌ Failed"
+    #         summary.append({"folder": folder.name, "file_count": file_count, "status": status})
+    #         if "failed" in status.lower():
+    #             continue
+    #         # save the env file
+    #         Persistence.save_txt(folder / F_METADATA_EXIF_ENV, metadata_path)
 
-        print(f"\n{C_T}### Metadata Update Summary:{C_0}")
-        for idx, entry in enumerate(summary):
-            print(
-                f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}{entry['folder']}{C_H}: "
-                f"{C_B}{entry['file_count']} files, {entry['status']}{C_0}"
-            )
+    #     print(f"\n{C_T}### Metadata Update Summary:{C_0}")
+    #     for idx, entry in enumerate(summary):
+    #         print(
+    #             f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}{entry['folder']}{C_H}: "
+    #             f"{C_B}{entry['file_count']} files, {entry['status']}{C_0}"
+    #         )
 
     @staticmethod
     def save_processed_dict(output_dict: Dict[str, dict], save_path: Path) -> None:
@@ -2193,27 +2180,61 @@ class ImageOrganizer:
             default=None,
             help=f"Output root folder where date folders are created (default: {str(P_PHOTO_OUTPUT_ROOT)})",
         )
+        # can be utf-8, latin1, cp1252
         parser.add_argument(
-            "-aju",
-            "--action_meta_json_update_recursive",
-            action="store_true",
-            help="Update metadata.json in output folder and all its first-level subfolders",
-        )
-        parser.add_argument(
-            "-apg",
-            "--action_prepare_geo_meta",
-            action="store_true",
-            help="Prepare collateral files for geo tagging",
+            "--encoding",
+            type=str,
+            default="latin1",
+            help="character encoding for file names and image metadata (default: latin1)",
         )
 
         parser.add_argument(
-            "-ni",
-            "--action_no_image_display",
-            action="store_false",
-            help="do not show gps image",
+            "--overwrite_reverse_geo",
+            action="store_true",
+            help="Overwrite the reverse geo info file",
         )
+
+        parser.add_argument(
+            "-mvf",
+            "--action_move_images",
+            action="store_true",
+            help="Move Images from a sourc folder to a target folder",
+        )
+
+        # parser.add_argument(
+        #     "-aju",
+        #     "--action_meta_json_update_recursive",
+        #     action="store_true",
+        #     help="Update metadata.json in output folder and all its first-level subfolders",
+        # )
+
+        # parser.add_argument(
+        #     "-apg",
+        #     "--action_prepare_geo_meta",
+        #     action="store_true",
+        #     help="Prepare collateral files for geo tagging",
+        # )
+
+        # parser.add_argument(
+        #     "-ni",
+        #     "--action_no_image_display",
+        #     action="store_false",
+        #     help="do not show gps image",
+        # )
 
         return parser
+
+    @staticmethod
+    def action_move_images(args: argparse.Namespace) -> List[Path]:
+        """Move images from a source to a target folder, split into date folders"""
+        if args.action_move_images is not True:
+            return []
+        p_from = Path(args.p_source).absolute()
+        p_to = Path(args.p_output).absolute()
+        encoding = args.encoding
+        p_image_folders = ImageOrganizer.move_files_by_date(p_from, p_to, encoding=encoding)
+        print(f"{C_H}🏃‍➡️ [ImageOrganizer] Created [{len(p_image_folders)}] Paths{C_0}")
+        return p_image_folders
 
     @staticmethod
     def action_prepare_geo_meta(args: argparse.Namespace) -> bool | None:
@@ -2233,28 +2254,28 @@ class ImageOrganizer:
         image_organizer.prepare_collateral_files()
         return True
 
-    @staticmethod
-    def action_update_metadata_recursive(args: argparse.Namespace) -> bool | None:
-        """Update the exiftool metadata json in all child folder"""
-        if args.action_meta_json_update_recursive is not True:
-            return None
+    # @staticmethod
+    # def action_update_metadata_recursive(args: argparse.Namespace) -> bool | None:
+    #     """Update the exiftool metadata json in all child folder"""
+    #     if args.action_meta_json_update_recursive is not True:
+    #         return None
 
-        p_root = args.p_source
-        if p_root is None:
-            outp = input(
-                f"{C_Q}Enter source root folder path for update (default {P_PHOTO_OUTPUT_ROOT}): {C_0}"
-            ).strip()
-            p_root = Path(outp) if outp else P_PHOTO_OUTPUT_ROOT
-        else:
-            p_root = Path(p_root)
+    #     p_root = args.p_source
+    #     if p_root is None:
+    #         outp = input(
+    #             f"{C_Q}Enter source root folder path for update (default {P_PHOTO_OUTPUT_ROOT}): {C_0}"
+    #         ).strip()
+    #         p_root = Path(outp) if outp else P_PHOTO_OUTPUT_ROOT
+    #     else:
+    #         p_root = Path(p_root)
 
-        if not p_root.exists() or not p_root.is_dir():
-            print(f"{C_E}🚨 Output folder {p_root} not found or invalid.{C_0}")
-            return False
+    #     if not p_root.exists() or not p_root.is_dir():
+    #         print(f"{C_E}🚨 Output folder {p_root} not found or invalid.{C_0}")
+    #         return False
 
-        ImageOrganizer.update_metadata_recursive(p_root)
+    #     ImageOrganizer.update_metadata_recursive(p_root)
 
-        return True
+    #     return True
 
 
 def main() -> None:
@@ -2269,13 +2290,14 @@ def main() -> None:
     parser = ImageOrganizer.build_arg_parser()
     args = parser.parse_args()
 
+    # if True:
+    #     p_from = Path(p_images_from)
+    #     p_to = Path(p_root_images)
+    #     p_image_folders = ImageOrganizer.move_files_by_date(p_from, p_to, encoding="latin1")
+    #     print(p_image_folders)
+
     # Preparation step: Create folders and move image files
-    p_image_folders = []
-    if True:
-        p_from = Path(p_images_from)
-        p_to = Path(p_root_images)
-        p_image_folders = ImageOrganizer.move_files_by_date(p_from, p_to, encoding="latin1")
-    print(p_image_folders)
+    p_image_folders = ImageOrganizer.action_move_images(args)
 
     # now performa all actions as controlled by input params
 
