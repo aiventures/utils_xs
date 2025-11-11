@@ -930,13 +930,14 @@ class ImageOrganizer:
         self,
         path: Path | str = None,
         timezone_s: str = TIMEZONE_DEFAULT,
-        show_gps_image: bool = True,
         max_timediff: int = 300,
         encoding: str = "latin1",
+        show_gps_image: bool = True,
+        overwrite_reverse_geo: bool = False,
         f_metadata: str = F_METADATA,
         f_reverse_geo: str = F_METADATA_GEO_REVERSE,
     ):
-        self._timezone = timezone_s
+        self._timezone: str = timezone_s
         # get the work path
         _path = Path.cwd()
         if path is not None:
@@ -951,14 +952,16 @@ class ImageOrganizer:
         # all metadata
         self._metadata: Dict = None
         # maximum time difference between EXIF Date and GPS Date allowed in seconds
-        self._max_timediff = max_timediff
+        self._max_timediff: int = max_timediff
         # file encoding might lead to issues on windows if not latin1 or cp1252
         # utf-8 struggles in my case
-        self._encoding = encoding
+        self._encoding: str = encoding
         # name of the metadata file containing everything
-        self._f_metadata = f_metadata
+        self._f_metadata: str = f_metadata
         # name of the reverse geo file
-        self._f_reverse_geo = f_reverse_geo
+        self._f_reverse_geo: str = f_reverse_geo
+        # overwrite the reverse geo info file containing nominatim data
+        self._overwrite_reverse_geo: bool = overwrite_reverse_geo
 
     @staticmethod
     def get_img_geo_from_track(metadata_exif: Dict, gpx_sorter: BinarySorter, time_offset_secs: int = 0) -> Dict | None:
@@ -1424,39 +1427,45 @@ class ImageOrganizer:
         - Extract lat lon default from OSM links => F_LAT_LON_ENV
         """
 
+        print("{C_T}### ImageOrganizer: prepare_collateral_files")
         # 0. Delete any temporary files
         self.cleanup_env_files(delete_generated_files=True)
         # Create the EXIF metadata
         cmd = self.get_exiftool_cmd_export_meta()
-        print("HUGO create Metadata:", cmd)
+        print(f"{C_H}    Create Metadata: {C_PY}[{cmd}]{C_0}")
         f_metadata_exif = self._path.joinpath(F_METADATA_EXIF)
         _ = CmdRunner.run_cmd_and_stream(cmd, f_metadata_exif)
         Persistence.save_txt(self._path / F_METADATA_EXIF_ENV, str(f_metadata_exif))
 
         # 1. Create Merged GPS, if not already present
-        print("HUGO merge_gpx")
-        # create the merged gpx
-        _ = GeoLocation.merge_gpx(self._path, F_GPX_MERGED)
+        f_gpx = GeoLocation.merge_gpx(self._path, F_GPX_MERGED)
+        print(f"{C_H}    Merged GPX : {C_F}[{f_gpx}]{C_0}")
+
         # store the file name of the merged gpx into an env file
         Persistence.save_txt(self._path.joinpath(F_GPX_MERGED_ENV), str(self._path.joinpath(F_GPX_MERGED)))
         # 2. Select Reference File and extract timestanp of camera
-        print("HUGO extract_image_timestamp")
-        timstamp_dict_camera = ImageOrganizer.extract_image_timestamp(self._path)
+        timstamp_dict_camera: Dict = ImageOrganizer.extract_image_timestamp(self._path)
+        if len(timstamp_dict_camera) == 0:
+            print(f"{C_W}    No image timestamp extracted{C_0}")
+        else:
+            print(f"{C_H}    Image timestamp: {C_PY}[{timstamp_dict_camera.get('original', 'NA')}]{C_0}")
+
         # 3. Now Get the GPS Timestamp (as seen on the image of the previous image)
-        print("HUGO calculate_time_offset")
         time_offset = self.calculate_time_offset()
+        print(f"{C_H}    Image Offset: {C_PY}[{time_offset}]{C_0}")
+
         # 4. Extract the OSM Link as default GPS Coordinates
-        print("HUGO get_openstreetmap_coordinates_from_folder")
         # 5. create a dict with all geo info metadata from osm link
         f_osm_info = F_OSM
-        _ = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, self._path)
+        lat_lon = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, self._path)
+        print(f"{C_H}    LatLon from OSM: {C_PY}[{str(lat_lon)}]{C_0}")
         Persistence.save_txt(self._path.joinpath(F_OSM_ENV), str(self._path.joinpath(f_osm_info)))
         # 6. Create a metadata json containing everything
+        print(f"{C_H}    Processing Metadata{C_0}")
         _ = self.merge_metadata()
         # 7. Get the GPS metadata
         _ = self.process_geo_metadata()
         # 8. Get the reverse geo data / TODO make this optional
-        # TODO get the
         metadata = self.process_reverse_geo_metadata(overwrite=True)
         # 9.. Save all Data to a big metadata.json
         f_metadata = metadata[FILES][CONFIG_F_METADATA]
@@ -1474,7 +1483,7 @@ class ImageOrganizer:
                 - "original": original timestamp string from EXIF
                 - "utc": UTC timestamp string
                 - "timestamp": UTC timestamp in milliseconds
-                - "datetime": imedatetime.datet object
+                - "datetime": datetime.date object
                 - "filename": absolute path to the image file
         """
         # check for input and resaolve paths or files
@@ -2166,6 +2175,19 @@ class ImageOrganizer:
             argparse.ArgumentParser: Configured argument parser.
         """
         parser = argparse.ArgumentParser(description="Auto organize images by date using exif metadata.")
+
+        parser.add_argument(
+            "--action_move_images",
+            action="store_true",
+            help="Move Images from a sourc folder to a target folder",
+        )
+
+        parser.add_argument(
+            "--action_prepare_geo_meta",
+            action="store_true",
+            help="Prepare collateral files for geo tagging",
+        )
+
         parser.add_argument(
             "-ps",
             "--p_source",
@@ -2180,12 +2202,33 @@ class ImageOrganizer:
             default=None,
             help=f"Output root folder where date folders are created (default: {str(P_PHOTO_OUTPUT_ROOT)})",
         )
+
+        parser.add_argument(
+            "--timezone",
+            type=str,
+            default=TIMEZONE_DEFAULT,
+            help=f"Timezone (Default: {TIMEZONE_DEFAULT})",
+        )
+
+        parser.add_argument(
+            "--max_timediff",
+            type=int,
+            default=300,
+            help="Maximum Timedifference GPS vs Camera Timestamp (300)",
+        )
+
         # can be utf-8, latin1, cp1252
         parser.add_argument(
             "--encoding",
             type=str,
             default="latin1",
-            help="character encoding for file names and image metadata (default: latin1)",
+            help="Character encoding for file names and image metadata (default: latin1)",
+        )
+
+        parser.add_argument(
+            "--do_not_show_gps_image",
+            action="store_true",
+            help="Do not show a preview of the GPS file",
         )
 
         parser.add_argument(
@@ -2195,10 +2238,17 @@ class ImageOrganizer:
         )
 
         parser.add_argument(
-            "-mvf",
-            "--action_move_images",
-            action="store_true",
-            help="Move Images from a sourc folder to a target folder",
+            "--f_metadata",
+            type=str,
+            default=F_METADATA,
+            help=f"Filename of Metadata File (Default: {F_METADATA})",
+        )
+
+        parser.add_argument(
+            "--f_reverse_geo",
+            type=str,
+            default=F_METADATA_GEO_REVERSE,
+            help=f"Filename of Reverse Geo File (Default: {F_METADATA_GEO_REVERSE})",
         )
 
         # parser.add_argument(
@@ -2206,13 +2256,6 @@ class ImageOrganizer:
         #     "--action_meta_json_update_recursive",
         #     action="store_true",
         #     help="Update metadata.json in output folder and all its first-level subfolders",
-        # )
-
-        # parser.add_argument(
-        #     "-apg",
-        #     "--action_prepare_geo_meta",
-        #     action="store_true",
-        #     help="Prepare collateral files for geo tagging",
         # )
 
         # parser.add_argument(
@@ -2244,15 +2287,39 @@ class ImageOrganizer:
 
         # validate and get the source path
         # p_source = ImageOrganizer.validate_p_source(args)
-        p_source = args.p_source
+        p_source: Path = Path(args.p_source)
+        timezone_s: str = args.timezone
+        max_timediff: int = args.max_timediff
+        encoding: str = args.encoding
+        show_gps_image = not args.do_not_show_gps_image
+        overwrite_reverse_geo = args.overwrite_reverse_geo
+        f_metadata = args.f_metadata
+        f_reverse_geo = args.f_reverse_geo
 
-        # TODO pass params to ImageOrganizer from args
-        show_gps_image = False if args.action_no_image_display else True
-
-        image_organizer = ImageOrganizer(path=p_source, show_gps_image=show_gps_image)
+        image_organizer = ImageOrganizer(
+            p_source,
+            timezone_s,
+            max_timediff,
+            encoding,
+            show_gps_image,
+            overwrite_reverse_geo,
+            f_metadata,
+            f_reverse_geo,
+        )
         # clean up existing tmp files, get timestamps to calculate offset, get osm coordinates
         image_organizer.prepare_collateral_files()
         return True
+
+    @staticmethod
+    def argparse_set_defaults(args: argparse.Namespace) -> argparse.Namespace:
+        """Sets the argparse defaults"""
+        # source path
+        if args.p_source is None:
+            args.p_source = os.getcwd()
+        if args.p_output is None:
+            args.p_output = str(P_PHOTO_OUTPUT_ROOT)
+
+        return args
 
     # @staticmethod
     # def action_update_metadata_recursive(args: argparse.Namespace) -> bool | None:
@@ -2289,6 +2356,10 @@ def main() -> None:
     success: bool | None = False
     parser = ImageOrganizer.build_arg_parser()
     args = parser.parse_args()
+    # set defaults
+    args = ImageOrganizer.argparse_set_defaults(args)
+
+    # supply argparse defaults
 
     # if True:
     #     p_from = Path(p_images_from)
