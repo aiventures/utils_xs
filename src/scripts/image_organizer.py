@@ -197,7 +197,7 @@ from dateutil import parser as date_parser
 
 # ANSI color codes
 from config.colors import C_0, C_B, C_E, C_F, C_H, C_I, C_L, C_P, C_PY, C_Q, C_S, C_T, C_W
-from config.constants import (
+from libs.geo import (
     CONFIG_F_GPX_MERGED,
     # GeotrackerGPXDATA,
     CONFIG_F_GPX_MERGED_ENV,
@@ -271,124 +271,29 @@ from config.constants import (
     TIMEZONE,
     TIMEZONE_DEFAULT,
 )
-from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTO_OUTPUT_ROOT
+
+from config.myenv import MY_P_PHOTO_DUMP, MY_P_PHOTO_OUTPUT_ROOT
 from libs.binary_sorter import BinarySorter
 from libs.helper import CmdRunner, Helper, Persistence, Transformer
 from libs.reverse_geo import ReverseGeo
 from config.local_config import p_images_from, p_root_images
-
-# Paths from environemt
-# Define image suffixes and default paths
-IMAGE_SUFFIXES = ["jpg", "jpeg", "raf", "dng"]
-# suffixes use in EXIFTOOL Comands
-SUFFIX_ARGS = []
-for ext in IMAGE_SUFFIXES:
-    SUFFIX_ARGS.extend(["-ext", ext])
-
-# EXIFTOOL https://exiftool.org/
-
-# Note in the BAT Files you need to activate CHCP 65001 to get the right characters in output
-CMD_EXIFTOOL = MY_CMD_EXIFTOOL
-
-# 1. EXIFTOOL command to get the timestamp creation date of an image
-CMD_EXIFTOOL_GET_DATE = [CMD_EXIFTOOL, "-SubSecDateTimeOriginal", "-b"]
-
-# 2. EXIFTOOL command to export metadata
-# exiftool -r -g -c %.6f -progress 50 -json -<extensions> ....
-CMD_EXIFTOOL_EXPORT_METADATA_RECURSIVE = [
-    CMD_EXIFTOOL,
-    "-r",
-    "-g",
-    "-c",
-    "'%.6f'",
-    "-progress50",
-    "-json",
-] + SUFFIX_ARGS
-CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
-
-# 3. EXIFTOOL command to geotag images based on a gps track
-# https://exiftool.org/geotag.html
-# exiftool -progress50 -json -jpg -tif -geosync=00:00:00 -geotag mygps.gpx <file/path>
-CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-progress50", "-json"] + SUFFIX_ARGS
-
-# 4. EXIFTOOL command to export existing GPS Coordinates as reverse Geo (addresses) from images as json in german
-# Reverse Geotag Coordinates > Address:
-# https://exiftool.org/geolocation.html
-# https://exiftool.org/geolocation.html#Geotag
-# WRITE https://exiftool.org/geolocation.html#Write
-# Shows the geolocations as json file when there are GPS Coordinates available
-# exiftool -api geolocation "-geolocation*" -lang de -json <file/path>
-CMD_EXIFTOOL_GEOTAG = [CMD_EXIFTOOL, "-api", "geolocation", "-lang", "de", "-progress50", "-json"] + SUFFIX_ARGS
-
-# 5. EXIFTOOL to export reverse Geo Coordinates base on lat lon
-# exiftool -g3 -a -json -lang de -api geolocation=40.748817,-73.985428
-CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api", "geolocation"]
-
-# https://exiftool.org/Shift.html
-# https://exiftool.org/#shift
-# exiftool "-AllDates+=0:0:0 0:0:42" -overwrite_original yourfile.jpg
-
-# Write the Reverse GeoInfo from GPS Coordinates into a file
-# exiftool "-geolocate=5.6429,5.9374" test.jpg
-
-# EMPTY ALL exiftool  -all:all= empty0.jpg
-# EXIFTOOL CREATE GPS Coordinates using
-# exiftool "-DateTimeOriginal=2025:10:14 09:00:00" filename.jpg
-# exiftool -GPSLatitude*=48.00 -GPSLongitude*=9.00 -GPSAltitude=100 "-gpsdatestamp<${datetimeoriginal}" "-gpstimestamp<${datetimeoriginal}"  empty0.jpg
-# adjust for UTC -1 or 2
-# OFFSET needs to be either +1 or +2 (utc_time + offset = local time) depending on daylight saving day
-# exiftool -GPSLatitude*=48.00 -GPSLongitude*=9.00 -GPSAltitude=100 "-gpsdatestamp<${datetimeoriginal}+01:00" "-gpstimestamp<${datetimeoriginal}+01:00"  empty0.jpg
-# MAybe also add Date Time Created From DateToimeCreated
-
-
-# TODO
-# https://exiftool.org/forum/index.php?topic=12620.0
-# Your basic command would be (no plus signs, those aren't used with Coordinates)
-# exiftool -GPSLatitude=40.6892 -GPSLatitudeRef=N -GPSLongitude=-74.0445 -GPSLongitudeRef=W -GPSAltitude=10 -GPSAltitudeRef="Above Sea Level" FILE
-# There are two tags for each coordinate that needs to be set because EXIF holds the GPS number and direction separately.
-# But exiftool is very flexible and the inputs can just be numbers, which can be useful with scripts
-# exiftool -GPSLatitude=40.6892 -GPSLatitudeRef=40.6892 -GPSLongitude=-74.0445 -GPSLongitudeRef=-74.0445 -GPSAltitude=10 -GPSAltitudeRef=10 FILE
-# And even better, you can condense this by using wildcards
-# exiftool -GPSLatitude*=40.6892 -GPSLongitude*=-74.0445 -GPSAltitude*=10 FILE
-# TODO_ extract all geo goordinates into a json using
-# exiftool -gps:all -j -n -json *.jpg => this will give entries of type
-# {
-#   "SourceFile": "test.jpg",
-#   "GPSVersionID": "2 3 0 0",
-#   "GPSLatitudeRef": "N",
-#   "GPSLatitude": 49.1426516231194,
-#   "GPSLongitudeRef": "E",
-#   "GPSLongitude": 8.69249434206389,
-#   "GPSAltitudeRef": 0,
-#   "GPSAltitude": 178,
-#   "GPSTimeStamp": "15:22:52.5",
-#   "GPSDateStamp": "2025:08:31"
-# }
-# =>
-
-
-# TODO IMPLEMENT create a waypoint file from geotagged images using a template
-# 5. EXIFTOOL create a waypoint file from geotagged images using a template
-# https://exiftool.org/geotag.html#Inverse
-# the template is stored \templates\exiftool_wpt.fmt
-# exiftool -fileOrder gpsdatetime -ext jpg -p exiftool_wpt.fmt . > out.gpx
-CMD_EXIFTOOL_CREATE_WAYPOINTS = [CMD_EXIFTOOL, "-fileOrder", "gpsdatetime", "-ext", "jpg", "-p"]
-# exiftool_wpt.fmt . > out.gpx
+from libs.exiftool import ExifTool, CMD_EXIFTOOL
+from libs.geo import IMAGE_SUFFIXES
 
 MY_P_PHOTO_DUMP = Path(MY_P_PHOTO_DUMP)
 P_PHOTO_OUTPUT_ROOT = Path(MY_P_PHOTO_OUTPUT_ROOT)
 
 F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
 
-# GEOREVERSE STRUCTURE
-GEOREVERSE_METADATA_JSON: Dict = {
-    "idx": 1,
-    "file": None,
-    "lat_lon": None,
-    "geo_reverse": {},
-    "geo_info": None,
-    "time_zone": None,
-}
+# # GEOREVERSE STRUCTURE
+# GEOREVERSE_METADATA_JSON: Dict = {
+#     "idx": 1,
+#     "file": None,
+#     "lat_lon": None,
+#     "geo_reverse": {},
+#     "geo_info": None,
+#     "time_zone": None,
+# }
 
 # Collected Geo Information alongside with origin info
 GEOTRACK_INFO: Dict = {
@@ -455,7 +360,7 @@ CONFIG_METADATA: Dict = {
 class GeoLocation:
     """Helper for Geolocation Handling."""
 
-    CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api"]
+    #   CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api"]
 
     @staticmethod
     def create_gpx_header(soup: BeautifulSoup) -> Tag:
@@ -745,57 +650,6 @@ class GeoLocation:
         return shortcut
 
     @staticmethod
-    def get_exiftool_reverse_geoinfo(
-        latlon: Tuple | List, file: str = None, index: int = 0, show: bool = False
-    ) -> dict:
-        """Using Exiftool Reverse Geo API get the reverse corrdinates"""
-
-        out = deepcopy(GEOREVERSE_METADATA_JSON)
-
-        if not (isinstance(latlon, List) or isinstance(latlon, Tuple)):
-            print(f"{C_E}🚨 get_exiftool_reverse_geoinfo, passed params need to be list or tuple{C_0}")
-            return
-        lat = round(float(latlon[0]), 6)
-        lon = round(float(latlon[1]), 6)
-        # populate the output dict
-        if file:
-            out["file"] = str(file)
-        out["lat_lon"] = [lat, lon]
-
-        # CMD_EXIFTOOL_REVERSE_GEO = [CMD_EXIFTOOL, "-g3", "-a", "-json", "-lang", "de", "-api", "geolocation"]
-        lat_lon = f"geolocation={lat},{lon}"
-        cmd_exiftool_reverse = GeoLocation.CMD_EXIFTOOL_REVERSE_GEO.copy()
-        cmd_exiftool_reverse.append(lat_lon)
-        # get reverse geocoordinates
-        reverse_geo_s = "".join(CmdRunner.run_cmd_and_print(cmd_exiftool_reverse))
-        geo_reverse = {}
-        geo_info = "No Reverse Geo Info"
-        if reverse_geo_s:
-            try:
-                geo_reverse = json.loads(reverse_geo_s)[0]
-                # print(json.dumps(reverse_geo, indent=4))
-                geo_reverse = geo_reverse.get("Main", {})
-                out["geo_reverse"] = geo_reverse
-                city = geo_reverse.get("GeolocationCity")
-                region = geo_reverse.get("GeolocationRegion")
-                subregion = geo_reverse.get("GeolocationSubregion")
-                time_zone = geo_reverse.get("GeolocationTimeZone", "Europe/Berlin")
-                distance = geo_reverse.get("GeolocationDistance")
-                bearing = geo_reverse.get("GeolocationBearing")
-                geo_info = f"{distance}, {bearing}° to {city}/{subregion}/{region}"
-                out["geo_info"] = geo_info
-                out["time_zone"] = time_zone
-                if show:
-                    print(
-                        f"\n{C_T}### OSM Coordinates {C_F}[{out['file']}] {C_Q}{out['lat_lon']}, {C_H}{geo_info} ({time_zone}){C_0}"
-                    )
-            except (JSONDecodeError, IndexError) as e:
-                print(f"{C_E}🚨 Error occured during parsing OSM Coordinates [{latlon}], {e}")
-                return None
-
-        return out
-
-    @staticmethod
     def get_openstreetmap_coordinates_from_folder(
         file: str, folder: Optional[Path] = None
     ) -> Optional[Tuple[float, float]]:
@@ -826,12 +680,13 @@ class GeoLocation:
         url_files = list(folder.glob("*.url"))
         output = {}
 
+        exiftool = ExifTool()
         for idx_f, f in enumerate(url_files, 1):
             output_per_file = {}
             url = Persistence.read_internet_shortcut(str(f))
             if url and "openstreetmap.org" in url.lower():
                 coords = GeoLocation.latlon_from_osm_url(url)
-                output_per_file = GeoLocation.get_exiftool_reverse_geoinfo(latlon=coords, file=f, index=idx_f)
+                output_per_file = exiftool.get_reverse_geoinfo(latlon=coords, file=f, index=idx_f)
                 output[idx_f] = output_per_file
             else:
                 continue
@@ -946,6 +801,8 @@ class ImageOrganizer:
             print(f"{C_E}🚨 [ImageOrganizer] No valid path {_path}{C_0}")
             return
         self._path: Path = _path.absolute()
+        # exiftool instance
+        self._exiftool = ExifTool(path=self._path)
         # setting the file names
         # variables to keep
         self._show_gps_image: bool = show_gps_image
@@ -1036,7 +893,8 @@ class ImageOrganizer:
             return
 
         # return the dict
-        geo_info = GeoLocation.get_exiftool_reverse_geoinfo(_lat_lon, _file_name_absolute, 1)
+        exiftool = ExifTool()
+        geo_info = exiftool.get_reverse_geoinfo(_lat_lon, _file_name_absolute, 1)
         track_info["metadata_geo"] = geo_info
 
         return track_info
@@ -1367,55 +1225,55 @@ class ImageOrganizer:
 
         return output
 
-    @staticmethod
-    def read_geosync_from_env(p_source: Path) -> str:
-        """reads the offset string from the env file"""
+    # @staticmethod
+    # def read_geosync_from_env(p_source: Path) -> str:
+    #     """reads the offset string from the env file"""
 
-        # get the geosync offset (previously written), with a default of 00:00:00
-        f_offset = p_source.joinpath(F_OFFSET_ENV)
-        lines = Persistence.read_txt_file(f_offset)
-        t_offset = "+00:00:00" if len(lines) == 0 else lines[0]
-        return f"-geosync={t_offset}"
+    #     # get the geosync offset (previously written), with a default of 00:00:00
+    #     f_offset = p_source.joinpath(F_OFFSET_ENV)
+    #     lines = Persistence.read_txt_file(f_offset)
+    #     t_offset = "+00:00:00" if len(lines) == 0 else lines[0]
+    #     return f"-geosync={t_offset}"
 
-    def get_exiftool_cmd_export_meta(self, recursive: bool = False) -> list:
-        """creates the exiftool command to export image data as json"""
+    #  cmd = self._exiftool.cmd_export_meta()
+    # def get_exiftool_cmd_export_meta(self, recursive: bool = False) -> list:
+    #     """creates the exiftool command to export image data as json"""
 
-        # command to export all exifdata in groups as json for given suffixes
-        # progress is shown every 50 images
-        # the c command is to format gps coordinates as decimals
-        exiftool_cmd = CMD_EXIFTOOL_EXPORT_METADATA_RECURSIVE if recursive else CMD_EXIFTOOL_EXPORT_METADATA
-        exif_cmd = exiftool_cmd.copy()
-        exif_cmd.append(str(self._path))
-        return exif_cmd
+    #     # command to export all exifdata in groups as json for given suffixes
+    #     # progress is shown every 50 images
+    #     # the c command is to format gps coordinates as decimals
+    #     exiftool_cmd = CMD_EXIFTOOL_EXPORT_METADATA_RECURSIVE if recursive else CMD_EXIFTOOL_EXPORT_METADATA
+    #     exif_cmd = exiftool_cmd.copy()
+    #     exif_cmd.append(str(self._path))
+    #     return exif_cmd
 
-    @staticmethod
-    def get_exiftool_create_gps_metadata_from_gpx(p_source: Path) -> list:
-        """creates the exiftool command to create gpx data in image files
+    # def get_exiftool_create_gps_metadata_from_gpx(self) -> list:
+    #     """creates the exiftool command to create gpx data in image files
 
-        Returns:
-        bool: True if the command succeeded, False otherwise.
-        """
+    #     Returns:
+    #     bool: True if the command succeeded, False otherwise.
+    #     """
 
-        # use current path or input path
-        p_work = p_source if p_source.is_dir() else Path().resolve()
-        f_gpx_merged = p_work.joinpath(F_GPX_MERGED)
+    #     # use current path or input path
+    #     p_work = self._path
+    #     f_gpx_merged = p_work.joinpath(F_GPX_MERGED)
 
-        f_gpx_merged = f_gpx_merged if f_gpx_merged.is_file() else None
-        if f_gpx_merged is None:
-            print(f"{C_H}No gpx file {f_gpx_merged} found, skip processing of creating gps based on gpx{C_0}")
-            return
+    #     f_gpx_merged = f_gpx_merged if f_gpx_merged.is_file() else None
+    #     if f_gpx_merged is None:
+    #         print(f"{C_H}No gpx file {f_gpx_merged} found, skip processing of creating gps based on gpx{C_0}")
+    #         return
 
-        # get the geosync offset (previously written), with a default of 00:00:00
-        geosync = ImageOrganizer.read_geosync_from_env(p_source)
+    #     # get the geosync offset (previously written), with a default of 00:00:00
+    #     geosync = self._exiftool.read_geosync_from_env()
 
-        # command to geotag all elements in folder using an offset
-        exif_cmd = CMD_EXIFTOOL_GEOTAG.copy()
-        additional_params = [geosync, "-geotag", f_gpx_merged, str(p_source)]
-        exif_cmd.extend(additional_params)
-        # exif_cmd.append(additional_params)
-        output = CmdRunner.run_cmd_and_print(exif_cmd)
+    #     # command to geotag all elements in folder using an offset
+    #     exif_cmd = CMD_EXIFTOOL_GEOTAG.copy()
+    #     additional_params = [geosync, "-geotag", f_gpx_merged, str(p_source)]
+    #     exif_cmd.extend(additional_params)
+    #     # exif_cmd.append(additional_params)
+    #     output = CmdRunner.run_cmd_and_print(exif_cmd)
 
-        return output
+    #     return output
 
     def prepare_collateral_files(self) -> None:
         """Prepare collateral files centrally.
@@ -1431,7 +1289,8 @@ class ImageOrganizer:
         # 0. Delete any temporary files
         self.cleanup_env_files(delete_generated_files=True)
         # Create the EXIF metadata
-        cmd = self.get_exiftool_cmd_export_meta()
+        # cmd = self.get_exiftool_cmd_export_meta()
+        cmd = self._exiftool.cmd_export_meta()
         print(f"{C_H}    Create Metadata: {C_PY}[{cmd}]{C_0}")
         f_metadata_exif = self._path.joinpath(F_METADATA_EXIF)
         _ = CmdRunner.run_cmd_and_stream(cmd, f_metadata_exif)
@@ -1517,33 +1376,18 @@ class ImageOrganizer:
         Persistence.save_txt(p / F_TIMESTAMP_IMG_ENV, str(f))
 
         # Step 2: Run exiftool extracting Original DateTime Original
-        cmd = CMD_EXIFTOOL_GET_DATE.copy()
-        # we need to add the encoding to handle special chars in filenames
-        cmd.extend(["-charset", f"filename={self._encoding}"])
-        cmd.append(str(f))
+        timestamp_camera = self._exiftool.get_original_datetime(f)
 
-        print(f"{C_T}Running exiftool command:{C_0} {cmd}")
-        cmd_output = CmdRunner.run_cmd_and_print(cmd)
-        timestamp_camera = None
-        # exiftool.exe -SubSecDateTimeOriginal -b "<path>\gps.jpg"
-        if not cmd_output:
-            print(f"{C_E}🚨 Exiftool command failed.{C_0}")
+        if timestamp_camera is None:
             return {}
-        else:
-            timestamp_camera = cmd_output[0]
-            print(f"{C_T}Got Timestamp from {C_F}[{f.name}] {C_H}[{timestamp_camera}]{C_0}")
 
         # Step 3: Capture output manually (if needed, could be redirected or parsed differently)
-        try:
-            timestamp_camera = timestamp_camera.strip()
-            output = ImageOrganizer.generate_timestamp_dict(timestamp_camera, f)
-            f_timestamp_camera = f.parent / F_TIMESTAMP_CAMERA
-            Persistence.save_json(f_timestamp_camera, output)
-            print(f"{C_H}GPS timestamp saved to {C_P}{f_timestamp_camera}{C_0}")
-            return output
-        except subprocess.CalledProcessError as e:
-            print(f"{C_E}🚨 Exiftool failed: {e.stderr}{C_0}")
-            return {}
+        timestamp_camera = timestamp_camera.strip()
+        output = ImageOrganizer.generate_timestamp_dict(timestamp_camera, f)
+        f_timestamp_camera = f.parent / F_TIMESTAMP_CAMERA
+        Persistence.save_json(f_timestamp_camera, output)
+        print(f"{C_H}GPS timestamp saved to {C_P}{f_timestamp_camera}{C_0}")
+        return output
 
     @staticmethod
     def render_mini_timeline(gps_ts: int, cam_ts: int) -> None:
@@ -1566,8 +1410,6 @@ class ImageOrganizer:
         else:
             gps_pos = midpoint
             cam_pos = int(midpoint + offset_sec)
-
-        print("HUGO POS", gps_pos, "   ", cam_pos)
 
         # Build timeline
         timeline = ["─"] * total_width
@@ -1800,7 +1642,8 @@ class ImageOrganizer:
         f_track_name = f_track.name
 
         # read the geosync offset
-        geosync = ImageOrganizer.read_geosync_from_env(p_source)
+
+        geosync = ExifTool(p_source).read_geosync_from_env()
         print(f"{C_T}### Using GPS Track {C_F}[{f_track}] (Offset {geosync}){C_0}")
 
         # exiftool -geosync=+00:00:00 -geotag track.gpx *.jpg
@@ -1824,6 +1667,7 @@ class ImageOrganizer:
 
     #     output_path = p_source / f_metadata_exif
     #     # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
+    #  cmd = self._exiftool.cmd_export_meta()
     #     cmd = ImageOrganizer.get_exiftool_cmd_export_meta(p_source)
 
     #     cmd_output = CmdRunner.run_cmd_and_stream(cmd, output_path)
@@ -1940,6 +1784,7 @@ class ImageOrganizer:
 
     #         print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
     #         # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
+    #  cmd = self._exiftool.cmd_export_meta()
     #         cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder)
     #         cmd_output = CmdRunner.run_cmd_and_stream(cmd, metadata_path)
     #         status = "✅ Success" if cmd_output else "❌ Failed"
@@ -2026,9 +1871,11 @@ class ImageOrganizer:
         out = []
 
         # Step 2: Run exiftool extracting Original DateTime Original
-        cmd = CMD_EXIFTOOL_GET_DATE.copy()
+        exiftool = ExifTool(input_folder)
+
+        # cmd = CMD_EXIFTOOL_GET_DATE.copy()
         # we need to add the encoding to handle special chars in filenames
-        cmd.extend(["-charset", f"filename={encoding}"])
+        # cmd.extend(["-charset", f"filename={encoding}"])
         os.chdir(str(input_folder))
         image_dict = {}
         num_files: int = len(file_names)
@@ -2037,17 +1884,22 @@ class ImageOrganizer:
             Helper.show_progress(idx, num_files, "Process Files")
             _f = Path(f)
             _suffix = _f.suffix[1:]
-            if _suffix not in SUFFIX_ARGS:
+            if _suffix not in IMAGE_SUFFIXES:
                 num_skipped_files += 1
                 continue
-            _cmd = cmd.copy()
-            _cmd.append(_f)
-            # encoding should be latin1 or cp1252
-            output_s = CmdRunner.run_cmd_and_print(_cmd, show=False, decode=True, encoding=encoding)
-            if len(output_s) == 1 and len(output_s[0]) > 0:
-                image_dict[str(_f)] = output_s[0]
-            else:
+            # _cmd = cmd.copy()
+            # _cmd.append(_f)
+            img_creation_date = exiftool.get_original_datetime(f)
+            if img_creation_date is None:
                 num_skipped_files += 1
+                continue
+            image_dict[str(f)] = img_creation_date
+            # encoding should be latin1 or cp1252
+            # output_s = CmdRunner.run_cmd_and_print(_cmd, show=False, decode=True, encoding=encoding)
+            # if len(output_s) == 1 and len(output_s[0]) > 0:
+            #     image_dict[str(_f)] = output_s[0]
+            # else:
+            #     num_skipped_files += 1
 
         # collect all files to be moved and paths to be created
         move_dict: Dict[str, List] = {}
@@ -2111,6 +1963,7 @@ class ImageOrganizer:
     #             print(f"\n{C_T}### Writing Metadata: {C_P}{folder_path}{C_T} ---")
     #             print(f"Found {C_I}{file_count}{C_T} files. Running exiftool...{C_0}")
     #             # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
+    #  cmd = self._exiftool.cmd_export_meta()
     #             cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder_path)
     #             cmd_output = CmdRunner.run_cmd_and_stream(cmd, f_metadata)
     #             if not cmd_output:
