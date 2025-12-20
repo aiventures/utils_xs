@@ -160,4 +160,4 @@ rem ERROR
 set C_E=%COL_RED%
 
 rem show output if called with any dummy input
-if %NUM_ARGS% gtr 0 echo %COL_GREY_DARK%### RUN %~f0%C_0%
+echo %COL_GREY_DARK%### RUN %~f0%C_0%
