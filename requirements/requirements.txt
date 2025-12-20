@@ -14,4 +14,4 @@ requests >= 2.32.5
 # https://pypi.org/project/pywin32/
 # https://superuser.com/questions/609447/how-to-install-the-win32com-python-library
 # right now only used in legacy module
-pywin32 >= 311
+# pywin32 >= 311

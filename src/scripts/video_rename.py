@@ -5,9 +5,15 @@ multiple folders
 
 import os
 import re
+import sys
+import json
 from pathlib import Path
 from datetime import datetime
-from legacy import file_module as fm
+import logging
+import argparse
+from argparse import ArgumentParser
+
+logger = logging.getLogger(__name__)
 
 REGEX_DICT = {}
 # regex for checking filename or contents
@@ -44,6 +50,54 @@ REGEX_DICT["REGEX_FILE_PARENTHESES"] = {
     "regex": REGEX_FILE_PARENTHESES,
     "function": "get_series",
 }
+
+displayfunctions_dict = {
+    "url": "get_url_from_link",
+    "txt": "read_txt_file",
+    "jpg": "get_img_metadata_exiftool",
+    "json": "read_json",
+    "lnk": "get_fileref_from_shortcut",
+}
+
+
+def save_json(filepath, data: dict):
+    """Saves dictionary data as UTF8 json"""
+    # TODO encode date time see
+    # https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
+
+    with open(filepath, "w", encoding="utf-8") as json_file:
+        try:
+            json.dump(data, json_file, indent=4, ensure_ascii=False)
+        except:
+            logger.error("Exception writing file {filepath}", exc_info=True)
+
+        return None
+
+
+def get_file_dict(fp, type_filters=[]) -> dict:
+    """reading file contents for supported file types"""
+    # global exif_info
+    subpath_dict = {}
+
+    logger.debug("READING FILES")
+    # functions to decode
+    for subpath, _, files in os.walk(fp):
+        p_path = Path(subpath).absolute()
+        subpath_info = subpath_dict.get(subpath, {})
+        _ = subpath_info.get("files", [])
+        file_dict = {}
+        for f in files:
+            pf = Path.joinpath(p_path, f)
+            filetype = pf.suffix[1:]
+            # only process if in filter
+            if bool(type_filters) and not filetype in type_filters:
+                continue
+            # stem=pf.stem
+            # print(f"{f}, suffix: {suffix}, filetype: {filetype},")
+            file_dict[f] = {"filetype": filetype}
+        subpath_info["file_details"] = file_dict
+        subpath_dict[subpath] = subpath_info
+    return subpath_dict
 
 
 # functions to return Episode and Series number
@@ -245,7 +299,7 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
         if save_file_info:
             dt_now = datetime.now()
             dts = datetime.strftime(dt_now, "%Y%m%d_%H%M%S")
-            fm.save_json("file_info_" + dts + ".json", p_renames)
+            save_json("file_info_" + dts + ".json", p_renames)
 
         for f, f_info in p_renames.items():
             f_old_name = f_info.get("old_name", None)
@@ -259,3 +313,65 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
                         print(e)
     os.chdir(old_path)
     return rename_dict
+
+
+def get_parser() -> ArgumentParser:
+    """returns the argument parser"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--path", "-p", default=".", help="StartPath", metavar="File Path")
+
+    # debug flag
+    parser.add_argument("--debug", dest="debug", action="store_true", help="Show debug Info")
+
+    parser.add_argument(
+        "--file_types", default=["txt", "mp4"], nargs="*", help="Filetypes to be processed", metavar="Filetypes"
+    )
+
+    # save_file_info info: save metadata information as json into subfolders
+    parser.add_argument(
+        "--save_file_info",
+        dest="save_file_info",
+        action="store_true",
+        help="save metadata from info file as json",
+    )
+
+    # multiple arguments call as params without brackets !
+    parser.add_argument(
+        "--ignore_paths", default=["kopiert"], nargs="*", help="Folders to be ignored", metavar="Folder Ignore"
+    )
+    parser.add_argument(
+        "--ignore_files",
+        default=["cleanup", "file_info"],
+        nargs="*",
+        help="Files not to be processed",
+        metavar="Files Ignore",
+    )
+
+    return parser
+
+
+if __name__ == "__main__":
+    argparser = get_parser()
+    args = argparser.parse_args()
+    print("*** READING FILE INFO ")
+    print(f"Arguments {args}")
+
+    p = args.path
+    debug = args.debug
+    filetypes = args.file_types
+    save_file_info = args.save_file_info
+    ignore_paths = args.ignore_paths
+    ignore_files = args.ignore_files
+
+    if os.path.isdir(p):
+        root_path = str(Path(p).absolute())
+        print(f"Using Path {root_path}")
+    else:
+        logger.error(f"ERROR: {p} is not a valid path")
+        sys.exit()
+
+    info_dict = get_file_dict(p, type_filters=filetypes)
+    rename_dict = rename_video_files(
+        info_dict, debug=debug, ignore_folders=ignore_paths, ignore_files=ignore_files, save_file_info=save_file_info
+    )
+    # idea: implement undo function using rename dict
