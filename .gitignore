@@ -175,7 +175,6 @@ bat/myenv.py
 bat/myenv.bat
 .vscode/settings.json
 .vscode/bookmarks.json
-src/config/colors.py
 bat/bat_test.bat
 src/config/local_config.py
 *_local.*
