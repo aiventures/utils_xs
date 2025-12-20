@@ -61,9 +61,11 @@ select = ["E", "F"]
 # E741 https://docs.astral.sh/ruff/rules/ambiguous-variable-name/
 # E722 https://docs.astral.sh/ruff/rules/bare-except/
 # E713 https://docs.astral.sh/ruff/rules/not-in-test/
+# PT011 https://docs.astral.sh/ruff/rules/pytest-raises-too-broad/
+
 # drop F401 to allow for removal of not used import 
-ignore = ["F401","F811","E501","E741","E722","E713"]
-# ignore = ["F401","F811","E501","E741","E722","E713"]
+ignore = ["F401","F811","E501","E741","E722","E713","PT011"]
+# ignore = ["F401","F811","E501","E741","E722","E713","PT011"]
 
 
 

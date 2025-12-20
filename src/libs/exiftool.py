@@ -9,7 +9,14 @@ from pathlib import Path
 from copy import deepcopy
 from config.colors import C_0, C_B, C_E, C_F, C_H, C_I, C_L, C_P, C_PY, C_Q, C_S, C_T, C_W
 from libs.helper import CmdRunner, Helper, Persistence, Transformer
-from libs.geo import GEOREVERSE_METADATA_JSON, IMAGE_SUFFIXES, F_GPX_MERGED, F_OFFSET_ENV
+from libs.geo import (
+    GEOREVERSE_METADATA_JSON,
+    IMAGE_SUFFIXES,
+    F_GPX_MERGED,
+    F_OFFSET_ENV,
+    F_METADATA_EXIF,
+    F_METADATA_EXIF_ENV,
+)
 
 # suffixes use in EXIFTOOL Comands
 SUFFIX_ARGS = []
@@ -101,6 +108,7 @@ class ExifTool:
         output: bool = True,
     ):
         # do a check whether f_exiftool points to a file
+        self._is_instanciated: bool = True
         if f_exiftool is None or not Path(f_exiftool).is_file():
             print(f"{C_E}🚨 [ExifTool] class not having a correct exiftool executable{C_0}")
             return
@@ -111,6 +119,7 @@ class ExifTool:
             _path = Path(path)
         if not _path.is_dir():
             print(f"{C_E}🚨 [ImageOrganizer] No valid path {_path}{C_0}")
+            self._is_instanciated = False
             return
         self._path: Path = _path.absolute()
         # file encoding might lead to issues on windows if not latin1 or cp1252
@@ -125,6 +134,10 @@ class ExifTool:
         if f_gpx_merged is not None and _path.joinpath(f_gpx_merged).is_file():
             self._f_gpx_merged = _path.joinpath(f_gpx_merged)
 
+    @property
+    def is_instanciated(self):
+        return self._is_instanciated
+
     def _print(self, s: str) -> None:
         """Output if lag is set"""
         if self._output:
@@ -132,14 +145,21 @@ class ExifTool:
 
     def get_reverse_geoinfo(self, latlon: Tuple | List, file: str = None, index: int = 0, show: bool = False) -> dict:
         """Using Exiftool Reverse Geo API get the reverse corrdinates"""
-
-        out = deepcopy(GEOREVERSE_METADATA_JSON)
+        out: Dict = {
+            "idx": 1,
+            "file": None,
+            "lat_lon": None,
+            "geo_reverse": {},
+            "geo_info": None,
+            "time_zone": None,
+        }
 
         if not (isinstance(latlon, List) or isinstance(latlon, Tuple)):
             print(f"{C_E}🚨 get_exiftool_reverse_geoinfo, passed params need to be list or tuple{C_0}")
             return
         lat = round(float(latlon[0]), 6)
         lon = round(float(latlon[1]), 6)
+
         # populate the output dict
         if file:
             out["file"] = str(file)
@@ -151,16 +171,7 @@ class ExifTool:
         # -a Shows all duplicate tags instead of suppressing them.
         # -lang Localizes tag descriptions into German.
         # -api geolocation=40.748817,-73.985428 run ExifTool Geo API
-        cmd_exiftool_reverse_geo = [
-            self._exiftool,
-            "-g3",
-            "-a",
-            "-json",
-            "-lang",
-            self._language,
-            "-api",
-            "geolocation",
-        ]
+        cmd_exiftool_reverse_geo = [self._exiftool, "-g3", "-a", "-json", "-lang", self._language, "-api"]
 
         lat_lon = f"geolocation={lat},{lon}"
         # TODO support other locales as well
@@ -168,7 +179,9 @@ class ExifTool:
         cmd_exiftool_reverse_geo.append(lat_lon)
         # cmd_exiftool_reverse.append(lat_lon)
         # get reverse geocoordinates
+
         reverse_geo_s = "".join(CmdRunner.run_cmd_and_print(cmd_exiftool_reverse_geo))
+
         geo_reverse = {}
         geo_info = "No Reverse Geo Info"
         if reverse_geo_s:
@@ -212,6 +225,21 @@ class ExifTool:
         exiftool_cmd += SUFFIX_ARGS
         exiftool_cmd.append(str(self._path))
         return exiftool_cmd
+
+    def export_metadata(
+        self, f_metadata: str = F_METADATA_EXIF, f_metadata_env: str = F_METADATA_EXIF_ENV, recursive: bool = False
+    ) -> List:
+        """creates a json containing all metadata exif alongside with an env file that
+        will store the path to the metadata file
+        if recursive flag is set it will also create metadata for all
+        subfolders
+        """
+        exif_cmd = self.cmd_export_meta(recursive)
+        print(f"{C_H}    Create Metadata: {C_PY}[{exif_cmd}]{C_0}")
+        f_metadata_exif = self._path.joinpath(f_metadata)
+        output = CmdRunner.run_cmd_and_stream(exif_cmd, f_metadata_exif)
+        Persistence.save_txt(self._path / f_metadata_env, str(f_metadata_exif))
+        return output
 
     def read_geosync_from_env(self) -> str:
         """reads the offset string from the env file"""

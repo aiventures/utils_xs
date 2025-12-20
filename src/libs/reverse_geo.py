@@ -16,7 +16,7 @@ import os
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W, C_S
-from config.constants import REVERSE_GEO_INFO, EXTERNAL_KEY_MAP, EXTRA
+from libs.geo import REVERSE_GEO_INFO, EXTERNAL_KEY_MAP, EXTRA
 
 
 class ReverseGeo:

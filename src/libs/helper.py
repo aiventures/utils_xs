@@ -248,7 +248,7 @@ class CmdRunner:
     """Running Commands"""
 
     @staticmethod
-    def run_cmd_and_stream(cmd: List[str], output_file: Path) -> list:
+    def run_cmd_and_stream(cmd: List[str], output_file: Path) -> bool:
         """
         Run exiftool with the given command and stream stderr to console.
 
