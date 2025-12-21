@@ -3,8 +3,9 @@
 rem bat2py.bat synchs variables and colors from bat to python using py_convert_env.bat and py_convert_colors.bat
 set pwd=%CD%
 
-call colors.bat
-call myenv.bat
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 echo %C_T%### RUN %C_PROG%%~f0%C_PY%
 

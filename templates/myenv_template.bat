@@ -4,13 +4,20 @@ rem working venv with additional Libraries
 rem place this file to /bat folder and adapt the variables 
 rem use bat2py to create a file containing these variables as python constants
 
+rem will only be called once 
 call colors.bat
 
 :: Count number of arguments
 set NUM_ARGS=0
 for %%x in (%*) do Set /A NUM_ARGS+=1
-if %NUM_ARGS% gtr 0 echo %COL_GREY_DARK%### RUN %~f0%C_0%
 
+rem if already initialized and no params are supplied skip execution
+if defined MY_SETENV_CALLED if %NUM_ARGS% EQU 0 ( goto end )
+
+echo %COL_GREY_DARK%### RUN %~f0%C_0%
+
+rem flag that setenv was called
+set MY_SETENV_CALLED=1
 rem Windows Desktop
 set "MY_P_DESKTOP=C:\Users\<YOUR_USER>\Desktop"
 rem working path set accordingly
@@ -43,7 +50,7 @@ set "MY_P_VSCODE_PROJECTS=%MY_P_WORK%\vscode_workspaces"
 rem My Default VSCOE Project 
 set "MY_F_VSCODE_PROJECT=%MY_P_VSCODE_PROJECTS%\utils_xs.code-workspace"
 rem BAT File containing MYENV Variables (this file)
-set "MY_F_MYENV_BAT=%MY_P_UTILS_BAT%\myenv.bat"
+set "MY_F_MYENV_BAT=%MY_P_UTILS_BAT%\setenv.bat"
 rem PY File containing MYENV Variables (converted using convert_bat_env_to_python.py)
 set "MY_F_MYENV_PY=%MY_P_UTILS_CONFIG%\myenv.py"
 rem BAT File containing color codes 
@@ -58,3 +65,5 @@ rem Root Path to place Photo Folders
 set "MY_P_PHOTO_OUTPUT_ROOT=%MY_P_PHOTOS_TRANSIENT%\PHOTOS"
 rem Path where to place Images from Camera 
 set "MY_P_PHOTO_DUMP=%MY_P_PHOTO_OUTPUT_ROOT%\_DUMP"
+
+:end

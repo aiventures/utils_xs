@@ -1,8 +1,9 @@
 @echo off
 rem venv_create.bat [venv_name|optional] create a venv with a venv_name (or enter from prompt)
 
-call colors.bat
-call myenv.bat
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 set pwd=%CD%
 set num_args=0

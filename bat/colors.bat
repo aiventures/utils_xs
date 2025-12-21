@@ -15,6 +15,9 @@ rem 38;5;f is font color and 48;5;b background color with numbers from 16...231
 set NUM_ARGS=0
 for %%x in (%*) do Set /A NUM_ARGS+=1
 
+rem if already initialized and no params are supplied skip execution
+if defined COL_TEST if %NUM_ARGS% EQU 0 ( goto end )
+
 rem create an ESQ Sequence
 for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
 rem selected color palette 38 is foreground, 48 is background, use py_color_list.bat to display the python
@@ -161,3 +164,4 @@ set C_E=%COL_RED%
 
 rem show output if called with any dummy input
 echo %COL_GREY_DARK%### RUN %~f0%C_0%
+:end

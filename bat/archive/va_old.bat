@@ -8,7 +8,9 @@ rem va.bat [venv] venv activate VENV in MY_P_VENV/VENV (Default is MY_P_VENV_WOR
 @REM - if the path p_venv/venv_name is a valid path, activate venv by calling %p_venv%/venv_name/Scripts/activate.bat 
 @REM - if nothing is passed, activate a default venv located in %p_venv%/venv_work
 
-call myenv.bat
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 echo hugo
 :: Count number of arguments

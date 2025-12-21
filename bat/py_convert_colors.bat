@@ -2,8 +2,9 @@
 @echo off
 rem py_convert_colors.bat converts colors from bat to python (convert_bat_colors_to_python.py)
 
-call colors.bat
-call myenv.bat
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 set "py_program=%MY_P_UTILS_SCRIPTS%\convert_bat_colors_to_python.py"
 echo %C_T%### RUN %C_PROG%%~f0%C_PY%

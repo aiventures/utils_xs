@@ -2,8 +2,9 @@
 @echo off
 rem py_convert_env.bat converts env from bat to python using convert_bat_env_to_python.py
 
-call colors.bat
-call myenv.bat
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 set "py_program=%MY_P_UTILS_SCRIPTS%\convert_bat_env_to_python.py"
 echo %C_T%### RUN %C_PROG%%~f0%C_PY%

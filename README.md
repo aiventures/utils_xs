@@ -8,11 +8,11 @@ A lot of source code was generated using prompts that may be lsited on module co
 * Check installation path using `pip list -v`
 * Create a Work VENV (best to name it `utils_xs` as well), and do not forget to activate it in VSCode so as to get rid off import errors
 
-# Path Structure and Definition via `myenv.bat`
+# Path Structure and Definition via `setenv.bat`
 
 Ensure in Windows to extend Windows `Path` Variable by the path [`bat`](bat), so you are able to call the scripts directly
 
-Use the copy/paste template [`templates/myenv_template.bat`](templates/myenv_template.bat) and copy it as `myenv.bat` to [`bat`](bat) folder and adjust the variables as needed. This will define locations where scripts will look for scripts and files and paths. 
+Use the copy/paste template [`templates/myenv_template.bat`](templates/myenv_template.bat) and copy it as `setenv.bat` to [`bat`](bat) folder and adjust the variables as needed. This will define locations where scripts will look for scripts and files and paths. 
 
 Run [`bat/bat2py.bat`](bat/bat2py.bat) to transform `colors` and `myenv` definitions in bat files into python files. That way you need to define these variables only once.
 

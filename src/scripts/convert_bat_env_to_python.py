@@ -178,8 +178,8 @@ Date of generation: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 def main():
     parser = argparse.ArgumentParser(description="Convert a Windows .bat environment script into a Python module.")
-    parser.add_argument("--input", "-i", default="myenv.bat", help="Input .bat file path (default: myenv.bat)")
-    parser.add_argument("--output", "-o", default="myenv.py", help="Output .py file path (default: myenv.py)")
+    parser.add_argument("--input", "-i", default="setenv.bat", help="Input .bat file path (default: setenv.bat)")
+    parser.add_argument("--output", "-o", default="setenv.py", help="Output .py file path (default: setenv.py)")
     args = parser.parse_args()
 
     try:

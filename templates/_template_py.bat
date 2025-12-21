@@ -14,8 +14,9 @@ echo %C_T%Run Python Program %C_PY%%py_program%%C_0%
 echo %C_PY%[%MY_F_MYENV_BAT%] ^> [%MY_F_MYENV_PY%] %C_PY%
 
 :continue
-call colors.bat %*
-call myenv.bat %*
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 python "%py_program%" --input "%MY_F_MYENV_BAT%" --output "%MY_F_MYENV_PY%"
 goto end

@@ -11,8 +11,9 @@ rem show info on run programs
 echo %C_T%### RUN %C_PROG%%~f0%C_PY% with params%C_H% [%*]%C_0%
 
 :continue
-call colors.bat %*
-call myenv.bat %*
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 rem handle up to 4 goal-based arguments
 if not "%~4"=="" goto args4

@@ -1,8 +1,10 @@
 
 @echo off
 rem color_list.bat Show ANSI Color list (using /config/ansi_color_codes.py)
-call colors.bat
-call myenv.bat
+
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 set pwd=%CD%
 set "py_program=%MY_P_UTILS_CONFIG%\ansi_color_codes.py"

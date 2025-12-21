@@ -7,7 +7,9 @@ for %%x in (%*) do set /A num_args+=1
 
 :continue
 call colors.bat %*
-call myenv.bat %*
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 set "py_program=%MY_P_UTILS_SCRIPTS%\bat_list.py"
 rem set a default path
 set "py_args=--paths "%MY_P_UTILS_BAT%""

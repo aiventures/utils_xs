@@ -2,14 +2,31 @@
 @echo off
 rem p.bat create a colored prompt using prompt.py
 rem set unicode code page to display special characters
-chcp 65001
+rem chcp 65001
+
+rem last used folder name 
+for %%A in ("%cd%") do set MY_LAST_FOLDERNAME=%%~nxA
 
 :: Count number of arguments
 set NUM_ARGS=0
 for %%x in (%*) do Set /A NUM_ARGS+=1
 
-call colors.bat
-call myenv.bat
+if defined MY_SETENV_CALLED ( goto run ) 
+rem call colors.bat
+call setenv.bat
+
+:run
+
+rem also set the MY_VENV variable if it has changed 
+if defined VIRTUAL_ENV ( goto set_my_venv )
+
+:unset_my_venv
+set MY_VENV=
+goto after_set_my_env
+:set_my_venv
+for %%A in ("%VIRTUAL_ENV%") do set MY_VENV=%%~nxA
+:after_set_my_env
+
 echo %COL_GREY_DARK%### RUN %~f0%C_0%
 
 set "py_program=%MY_P_UTILS_SCRIPTS%\prompt.py"

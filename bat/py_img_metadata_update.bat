@@ -1,8 +1,9 @@
 @echo off
 rem py_img_metadata_update.bat [output_path|optional] Updates the metadata.json for each subfolder based on EXIF data
 
-call colors.bat %*
-call myenv.bat %*
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 rem activate venv for correct path resolution
 call va.bat
 

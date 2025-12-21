@@ -310,8 +310,8 @@ A Python script that converts Windows `.bat` environment variable definitions in
 
 - **🖥️ CLI Interface**
   - Uses `argparse`:
-    - `--input` or `-i` (default: `myenv.bat`)
-    - `--output` or `-o` (default: `myenv.py`)
+    - `--input` or `-i` (default: `setenv.bat`)
+    - `--output` or `-o` (default: `setenv.py`)
   - Error messages for unresolved or circular references.
 
 - **🧪 Main Block**
@@ -335,7 +335,7 @@ A Python script that converts Windows `.bat` environment variable definitions in
 ## 🧪 Sample Output (simplified)
 
 ```python
-""" This module was generated from C:\\scripts\\myenv.bat
+""" This module was generated from C:\\scripts\\setenv.bat
 Date of generation: 2025-10-05 23:49:00 """
 
 # working path

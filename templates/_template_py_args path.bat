@@ -8,8 +8,9 @@ rem _template_py_args_path.bat use for copy & paste to call python scripts with 
 @REM LEQ: Less than or equal to
 @REM GTR: Greater than
 
-call colors.bat %*
-call myenv.bat %*
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 
 set pwd=%CD%
 set "py_program=%MY_P_UTILS_SCRIPTS%\xyz.py"

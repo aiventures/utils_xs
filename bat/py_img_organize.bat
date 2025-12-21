@@ -1,8 +1,9 @@
 @echo off
 rem py_img_organize.bat [input_path|optional] [output_path|optional] Auto Organize Images into Folders Based on EXIF Data (image_organizer.py)
 
-call colors.bat %*
-call myenv.bat %*
+rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
+rem put it into executable PATH and call it setenv.bat
+call setenv.bat
 rem activate venv for correct path resolution
 call va.bat
 
