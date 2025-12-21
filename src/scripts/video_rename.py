@@ -12,6 +12,7 @@ from datetime import datetime
 import logging
 import argparse
 from argparse import ArgumentParser
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
         skip_folder = [ignore_folder in path_part for path_part in path_parts for ignore_folder in ignore_folders]
         skip_folder = any(skip_folder)
         if skip_folder:
-            print(f"SKIP FOLDER '{p}', ignore folders: {ignore_folders}")
+            print(f"{C_I}SKIP FOLDER {C_F}'{p}', {C_I}ignore folders: {C_F}{ignore_folders}")
             continue
         print(f"\n*** {p}")
         file_dict = p_info["file_details"]
@@ -191,7 +192,7 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
                 print(f"File {f}")
 
             if any([f_ignore in f for f_ignore in ignore_files]):
-                print(f"SKIP FILE '{f}', ignore files: {ignore_files}")
+                print(f"{C_I}SKIP FILE {C_F}'{f}', {C_I}ignore files: {C_F}{ignore_files}")
                 continue
 
             if not os.path.isfile(os.path.join(p, f)):
@@ -244,14 +245,14 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
                 # renaming due to regex
                 if name_new:
                     if debug:
-                        print(f"RULE MATCH:{regex_rule}; REGEX TYPE:{regex_info['type']}")
+                        print(f"{C_I}RULE MATCH:{regex_rule}; REGEX TYPE:{regex_info['type']}")
                         if line:
-                            print(f"LINE:{line.strip()}")
+                            print(f"{C_I}LINE:{line.strip()}")
                     if name_new != f:
-                        print(f"*   {f} content:({len(content)})")
-                        print("    " + name_new)
+                        print(f"{C_I}*   {f} content:({len(content)})")
+                        print("{C_I}    " + name_new)
                     else:
-                        print(f"#   {f} content:({len(content)}) ALREADY RENAMED")
+                        print(f"{C_I}#   {f} content:({len(content)}) ALREADY RENAMED")
                     rename_info_dict["old_name"] = f
                     if f != name_new:
                         rename_info_dict["new_name"] = name_new
@@ -260,34 +261,34 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
 
             # no regex rules found replace by content/alt name if it is there
             if debug and not name_new:
-                print("No rename rule was found")
+                print("{C_I}No rename rule was found")
 
             if (not name_new) and parsed_content:
                 name_new = parsed_content.get("alt_name", "")
                 if debug:
-                    print(f"    No rule matched, use alt filename: {name_new}")
+                    print(f"{C_I}    No rule matched, use alt filename: {name_new}")
                 if name_new:
                     if f != name_new:
                         rename_info_dict["new_name"] = name_new
                         num_renames += 1
-                        print(f"*   {f} content:({len(content)})")
-                        print("    " + name_new)
+                        print(f"{C_I}*   {f} content:({len(content)})")
+                        print("{C_I}    " + name_new)
                     else:
-                        print(f"#   {f} content:({len(content)}) ALREADY RENAMED")
+                        print(f"{C_I}#   {f} content:({len(content)}) ALREADY RENAMED")
 
             rename_info[f] = rename_info_dict
 
         rename_dict[p] = rename_info
-        print(f"    NUM RENAMES TOTAL: {num_renames}")
+        print(f"{C_I}    NUM RENAMES TOTAL: {num_renames}")
 
     old_path = os.getcwd()
 
     execute = False
-    if save and num_renames > 0 and (input("Save Changes (y)?") == "y"):
+    if save and num_renames > 0 and (input("{C_Q}Save Changes (y)?") == "y"):
         execute = True
 
     if execute:
-        print(f"\n*** RENAME {num_renames} files ***")
+        print(f"\n{C_I}*** RENAME {num_renames} files ***")
 
     for p, p_renames in rename_dict.items():
         if not p_renames:
@@ -295,7 +296,7 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
         os.chdir(p)
 
         if num_renames > 0:
-            print(f"*** {p}")
+            print(f"{C_I}*** {p}")
         if save_file_info:
             dt_now = datetime.now()
             dts = datetime.strftime(dt_now, "%Y%m%d_%H%M%S")
@@ -305,12 +306,12 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
             f_old_name = f_info.get("old_name", None)
             f_new_name = f_info.get("new_name", None)
             if f_new_name:
-                print(f"    {f_old_name} -> {f_new_name}")
+                print(f"{C_I}    {f_old_name} -> {f_new_name}")
                 if execute:
                     try:
                         os.rename(f_old_name, f_new_name)
                     except OSError as e:
-                        print(e)
+                        print(C_E + e)
     os.chdir(old_path)
     return rename_dict
 
@@ -353,8 +354,8 @@ def get_parser() -> ArgumentParser:
 if __name__ == "__main__":
     argparser = get_parser()
     args = argparser.parse_args()
-    print("*** READING FILE INFO ")
-    print(f"Arguments {args}")
+    print("{C_T}*** READING FILE INFO ")
+    print(f"{C_PY}Arguments {args}")
 
     p = args.path
     debug = args.debug
@@ -365,7 +366,7 @@ if __name__ == "__main__":
 
     if os.path.isdir(p):
         root_path = str(Path(p).absolute())
-        print(f"Using Path {root_path}")
+        print(f"{C_I}Using Path {root_path}")
     else:
         logger.error(f"ERROR: {p} is not a valid path")
         sys.exit()
@@ -374,4 +375,5 @@ if __name__ == "__main__":
     rename_dict = rename_video_files(
         info_dict, debug=debug, ignore_folders=ignore_paths, ignore_files=ignore_files, save_file_info=save_file_info
     )
+    print(C_0)
     # idea: implement undo function using rename dict
