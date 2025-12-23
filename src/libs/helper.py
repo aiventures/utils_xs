@@ -352,7 +352,7 @@ class Persistence:
                             logger.warning("Line contains BOM Flag, file is special UTF-8 format with BOM")
                     if len(line.strip()) == 0 and skip_blank_lines:
                         continue
-                    if line[0] == comment_marker:
+                    if comment_marker is not None and line[0] == comment_marker:
                         continue
                     lines.append(line.strip())
         except:
