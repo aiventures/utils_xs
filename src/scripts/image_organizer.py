@@ -236,6 +236,7 @@ from libs.geo import (
     F_OSM,
     F_OSM_ENV,
     F_TIMESTAMP_CAMERA,
+    F_EXIFTOOL_IMPORT,  # Metadata Dump To IMport Metadata using Exiftool
     F_TIMESTAMP_GPS,
     # ImagecontainingthetimestampandtheGPSImage,
     # Timestampfilestocalculateoffset,
@@ -267,6 +268,10 @@ from libs.geo import (
     TIMESTAMP_UTC,
     TIMEZONE,
     TIMEZONE_DEFAULT,
+    # EXIFTOOL METADATA IMPORT DEFINITIONS
+    EXIFTOOL_METADATA_IMPORT,
+    CONFIG_F_EXIFTOOL_IMPORT,
+    CONFIG_F_EXIFTOOL_IMPORT_ENV,
 )
 
 from config.myenv import MY_P_PHOTO_DUMP, MY_P_PHOTO_OUTPUT_ROOT
@@ -325,6 +330,7 @@ CONFIG_METADATA: Dict = {
         CONFIG_F_OFFSET_ENV: F_OFFSET_ENV,  # file ref to image offset in form /-+hh:mm:ss
         CONFIG_F_OFFSET_SECS_ENV: F_OFFSET_SECS_ENV,  # file ref to image offset in seconds
         CONFIG_F_METADATA_GEO_REVERSE_ENV: F_METADATA_GEO_REVERSE,  # file to GEO REVEERSE DATA
+        CONFIG_F_EXIFTOOL_IMPORT_ENV: F_EXIFTOOL_IMPORT,  # fileref to json containing metadata to be used for exiftool image import
     },
     # F_OFFSET_ENV = "offset.env"
     # F_OFFSET_SECS_ENV = "offset_sec.env"
@@ -339,6 +345,7 @@ CONFIG_METADATA: Dict = {
         CONFIG_F_GPX_MERGED: None,  # Link to merged GPX Files
         CONFIG_F_GPX_MERGED_JSON: None,  # Link to merged GPX JSON
         CONFIG_F_METADATA_GEO_REVERSE: None,  # Georeverse Metadata
+        CONFIG_F_EXIFTOOL_IMPORT: None,  # metadata json containing import metadata
     },
     OFFSET: {
         CONFIG_OFFSET_STR: "+00:00:00",  # Offset as -+hh:mm:ss
@@ -779,6 +786,11 @@ class ImageOrganizer:
 
     def __init__(
         self,
+        # actions to be performed
+        action_prepare_geo_meta: bool = True,
+        action_prepare_transform: bool = True,
+        action_change_metadata: bool = True,
+        # collateral inforamtion
         path: Path | str = None,
         timezone_s: str = TIMEZONE_DEFAULT,
         max_timediff: int = 300,
@@ -789,6 +801,7 @@ class ImageOrganizer:
         f_metadata: str = F_METADATA,
         f_reverse_geo: str = F_METADATA_GEO_REVERSE,
         f_gpx_merged: str = F_GPX_MERGED,
+        f_exiftool_import: str = F_EXIFTOOL_IMPORT,
         cmd_exiftool: str = CMD_EXIFTOOL,
         language: str = "de",
         cmd_exiftool_output: bool = True,
@@ -802,6 +815,12 @@ class ImageOrganizer:
             print(f"{C_E}🚨 [ImageOrganizer] No valid path {_path}{C_0}")
             return None
         self._path: Path = _path.absolute()
+
+        # add actions
+        self._action_prepare_geo_meta = action_prepare_geo_meta
+        self._action_prepare_transform = action_prepare_transform
+        self._action_change_metadata = action_change_metadata
+
         # setting the file names
         # variables to keep
         self._show_gps_image: bool = show_gps_image
@@ -824,11 +843,12 @@ class ImageOrganizer:
         self._f_reverse_geo: str = f_reverse_geo
         # name of the merged gpx file
         self._f_gpx_merged: str = f_gpx_merged
+        # name of the metadatafile to be used for changing exiftdata
+        self._f_exiftool_import = f_exiftool_import
         # path to exiftool executable
         self._cmd_exiftool = cmd_exiftool
         # ouztput of exiftool
         self._cmd_exiftool_output = cmd_exiftool_output
-
         # get an exiftool instance
         self._exiftool = self._create_exiftool()
 
@@ -1100,6 +1120,15 @@ class ImageOrganizer:
 
         return _metadata
 
+    def _prepare_exiftool_import(self) -> Dict:
+        """Based on previous actions, prepare a json file that can be used
+        for changing EXIF Metadata using Exiftool"""
+        out = {}
+        _f_exiftool_import = self._f_exiftool_import
+        # TODO IMPLEMENT
+        print("HUGO")
+        return out
+
     def merge_metadata(self) -> Dict:
         """Reads all metadata and writes them to a merged JSON.
         General Idea: Read available evn files from FILES_ENV
@@ -1135,6 +1164,7 @@ class ImageOrganizer:
             files_env[CONFIG_F_TIMESTAMP_CAMERA_ENV]: CONFIG_F_TIMESTAMP_CAMERA,
             files_env[CONFIG_F_TIMESTAMP_GPS_ENV]: CONFIG_F_TIMESTAMP_GPS,
             files_env[CONFIG_F_METADATA_GEO_REVERSE_ENV]: CONFIG_F_METADATA_GEO_REVERSE,
+            files_env[CONFIG_F_EXIFTOOL_IMPORT_ENV]: CONFIG_F_EXIFTOOL_IMPORT,
         }
 
         # mapping the values in the env files to fields
@@ -1312,7 +1342,7 @@ class ImageOrganizer:
     #     return output
 
     def prepare_collateral_files(
-        self, f_metadata_exif: str = F_METADATA_EXIF, f_gpx_merged: str = F_GPX_MERGED
+        self, f_metadata_exif: str = F_METADATA_EXIF, f_gpx_merged: str = F_GPX_MERGED, args: dict = {}
     ) -> None:
         """Prepare collateral files centrally.
         - Delete Collateral Files first
@@ -1322,6 +1352,8 @@ class ImageOrganizer:
         - Calculate Time Offset: F_TIMESTAMP_CAMERA / F_TIMESTAMP_GPS => F_OFFSET_ENV
         - Extract lat lon default from OSM links => F_LAT_LON_ENV
         """
+
+        # get the
 
         print(f"{C_T}### ImageOrganizer: prepare_collateral_files")
         # 0. Delete any temporary files
@@ -1364,11 +1396,13 @@ class ImageOrganizer:
         if lat_lon_extracted:
             print(f"{C_H}    LatLon from OSM: {C_PY}[{str(lat_lon)}]{C_0}")
             Persistence.save_txt(self._path.joinpath(F_OSM_ENV), str(self._path.joinpath(f_osm_info)))
+
         # 5. create a dict with all geo info metadata from osm link
         # - will be either created from reverse geo or from exiftool geolocation API
         # 6. Create a metadata json containing everything
         print(f"{C_H}    Processing Metadata{C_0}")
         _ = self.merge_metadata()
+
         # 7. Get the GPS metadata
         # - use the collected exif data as input list
         # - amend the metadata.
@@ -1379,9 +1413,13 @@ class ImageOrganizer:
         if gps_metadata_extracted:
             print(f"{C_H}    🌍 Processed GPS Metadata{C_0}")
 
-        # 9. use_reverse_geo if activated
+        # 8. use_reverse_geo if activated
         _metadata = self.process_reverse_geo_metadata(overwrite=self._overwrite_reverse_geo)
-        # 9.. Save all Data to a big metadata.json
+
+        # 9. Prepare exiftool json for import of Exiftool
+        exiftool_metadata = self._prepare_exiftool_import()
+
+        # 10. Save all Data to a big metadata.json
         f_metadata = _metadata[FILES][CONFIG_F_METADATA]
         Persistence.save_json(f_metadata, _metadata)
 
@@ -2046,46 +2084,75 @@ class ImageOrganizer:
         """
         parser = argparse.ArgumentParser(description="Auto organize images by date using exif metadata.")
 
+        # used in main
         parser.add_argument(
-            "--show_args",
+            "--action_show_args",
+            "--action-show-args",
             action="store_true",
             help="Show the arparse args when running the image organizer",
         )
 
+        # used in main
         parser.add_argument(
             "--action_move_images",
+            "--action-move-images",
             action="store_true",
             help="Move Images from a sourc folder to a target folder",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--action_prepare_geo_meta",
+            "--action-prepare-geo-meta",
             action="store_true",
             help="Prepare collateral files for geo tagging",
         )
 
+        # part of ImageOrganizer Constructor
+        parser.add_argument(
+            "--action_prepare_transform",
+            "--action-prepare-transform",
+            action="store_true",
+            help="Transform image metadata to a json for EXIFTOOL metadata changes",
+        )
+
+        # part of ImageOrganizer Constructor
+        parser.add_argument(
+            "--action_change_metadata",
+            "--action-change-metadata",
+            action="store_true",
+            help="Change image metadata using EXIFTOOL",
+        )
+
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--p_source",
+            "--p-source",
             type=str,
             default=None,
             help="Source folder path where images were dumped (default: current folder if empty)",
         )
         parser.add_argument(
             "--p_output",
+            "--p-output",
             type=str,
             default=None,
             help=f"Output root folder where date folders are created (default: {str(P_PHOTO_OUTPUT_ROOT)})",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
+            "--timezone",
             "--timezone",
             type=str,
             default=TIMEZONE_DEFAULT,
             help=f"Timezone (Default: {TIMEZONE_DEFAULT})",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--max_timediff",
+            "--max-timediff",
             type=int,
             default=300,
             help="Maximum Timedifference GPS vs Camera Timestamp (300)",
@@ -2094,57 +2161,82 @@ class ImageOrganizer:
         # can be utf-8, latin1, cp1252
         parser.add_argument(
             "--encoding",
+            "--encoding",
             type=str,
             default="latin1",
             help="Character encoding for file names and image metadata (default: latin1)",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--do_not_show_gps_image",
+            "--do-not-show-gps-image",
             action="store_true",
             help="Do not show a preview of the GPS file",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--do_not_use_reverse_geo",
+            "--do-not-use-reverse-geo",
             action="store_true",
             help="Do not use reverse geo service",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--overwrite_reverse_geo",
+            "--overwrite-reverse-geo",
             action="store_true",
             help="Overwrite the reverse geo info file",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--f_metadata",
+            "--f-metadata",
             type=str,
             default=F_METADATA,
             help=f"Filename of Metadata File (Default: {F_METADATA})",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--f_reverse_geo",
+            "--f-reverse-geo",
             type=str,
             default=F_METADATA_GEO_REVERSE,
             help=f"Filename of Reverse Geo File (Default: {F_METADATA_GEO_REVERSE})",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--f_gpx_merged",
+            "--f-gpx-merged",
             type=str,
             default=F_GPX_MERGED,
             help=f"Filename of Merged GPX File (Default: {F_GPX_MERGED})",
         )
 
+        # part of ImageOrganizer Constructor
+        parser.add_argument(
+            "--f_exiftool_import",
+            "--f-exiftool-import",
+            type=str,
+            default=F_EXIFTOOL_IMPORT,
+            help=f"Filename cotnaining exiftool import data (Default: {F_EXIFTOOL_IMPORT})",
+        )
+
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--cmd_exiftool",
+            "--cmd-exiftool",
             type=str,
             default=CMD_EXIFTOOL,
             help=f"Path to ExifTool Executable (Default:{CMD_EXIFTOOL})",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--language",
             type=str,
@@ -2152,8 +2244,10 @@ class ImageOrganizer:
             help="Language Code (Used for ExifTool, default: de)",
         )
 
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--do_not_show_exiftool_output",
+            "--do-not-show-exiftool-output",
             action="store_true",
             help="Hide Exiftool Output Info Messages",
         )
@@ -2184,6 +2278,7 @@ class ImageOrganizer:
             f_metadata=args.f_metadata,
             f_reverse_geo=args.f_reverse_geo,
             f_gpx_merged=args.f_gpx_merged,
+            f_exiftool_import=args.f_exiftool_import,
             cmd_exiftool=args.cmd_exiftool,
             language=args.language,
             cmd_exiftool_output=(not args.do_not_show_exiftool_output),
@@ -2233,8 +2328,9 @@ def main() -> None:
     args = parser.parse_args()
     # set defaults
     args = ImageOrganizer.argparse_set_defaults(args)
+    # args_dict: dict = vars(args)
 
-    if args.show_args:
+    if args.action_show_args:
         print(f"{C_T}### Argparser Settings{C_PY}")
         print(json.dumps(vars(args), indent=4))
         print(C_0)
@@ -2252,8 +2348,8 @@ def main() -> None:
 
     _ = image_organizer.prepare_collateral_files() if args.action_prepare_geo_meta else None
 
-    if args.action_prepare_geo_meta is True:
-        return None
+    # if args.action_prepare_geo_meta is True:
+    #     return None
 
     # supply argparse defaults
 

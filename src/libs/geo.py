@@ -72,7 +72,6 @@ CONFIG_F_METADATA_GEO_REVERSE_ENV = "f_metadata_geo_reverse_env"
 F_METADATA_GEO_REVERSE = "metadata_geo_reverse.json"
 CONFIG_F_METADATA_GEO_REVERSE = "f_metadata_geo_reverse"
 
-
 # Image containing the timestamp and the GPS Image
 # Timestamp files to calculate offset
 # T_CAMERA - T_GPS = T_OFFSET
@@ -93,9 +92,16 @@ CONFIG_F_TIMESTAMP_CAMERA = "f_timestamp_camera"
 CONFIG_F_TIMESTAMP_GPS = "f_timestamp_gps"
 CONFIG_TIMESTAMP_CAMERA = "timestamp_camera"
 CONFIG_TIMESTAMP_GPS = "timestamp_gps"
+
+# exiftool import metadata definitions
+EXIFTOOL_METADATA_IMPORT = "exiftool_metadata_import"
+CONFIG_F_EXIFTOOL_IMPORT_ENV = "f_exiftool_import_env"
+CONFIG_F_EXIFTOOL_IMPORT = "f_exiftool_import"
+
 F_TIMESTAMP_IMG_ENV = "timestamp_img.env"
 F_TIMESTAMP_GPS = "timestamp_gps.json"
 F_TIMESTAMP_CAMERA = "timestamp_camera.json"
+F_EXIFTOOL_IMPORT = "exiftool_import.json"
 
 # OpenStretMap Configuration
 CONFIG_F_OSM_ENV = "f_osm_env"
