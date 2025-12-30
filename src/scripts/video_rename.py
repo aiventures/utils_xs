@@ -5,14 +5,16 @@ multiple folders
 
 import os
 import re
-import sys
+
+# import sys
 import json
 from pathlib import Path
 from datetime import datetime
 import logging
 import argparse
 from argparse import ArgumentParser
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W, C_S, C_1
+from libs.helper import Persistence
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +54,6 @@ REGEX_DICT["REGEX_FILE_PARENTHESES"] = {
     "function": "get_series",
 }
 
-displayfunctions_dict = {
-    "url": "get_url_from_link",
-    "txt": "read_txt_file",
-    "jpg": "get_img_metadata_exiftool",
-    "json": "read_json",
-    "lnk": "get_fileref_from_shortcut",
-}
-
 
 def save_json(filepath, data: dict):
     """Saves dictionary data as UTF8 json"""
@@ -75,8 +69,10 @@ def save_json(filepath, data: dict):
         return None
 
 
-def get_file_dict(fp, type_filters=[]) -> dict:
+def get_file_dict(fp, type_filters=None) -> dict:
     """reading file contents for supported file types"""
+    _type_filters = [] if type_filters is None else type_filters
+
     # global exif_info
     subpath_dict = {}
 
@@ -91,11 +87,13 @@ def get_file_dict(fp, type_filters=[]) -> dict:
             pf = Path.joinpath(p_path, f)
             filetype = pf.suffix[1:]
             # only process if in filter
-            if bool(type_filters) and not filetype in type_filters:
+            if bool(_type_filters) and not filetype in _type_filters:
                 continue
-            # stem=pf.stem
-            # print(f"{f}, suffix: {suffix}, filetype: {filetype},")
-            file_dict[f] = {"filetype": filetype}
+            file_dict[f] = {"filetype": filetype, "content": None}
+            stem = pf.stem
+            content = None
+            if filetype == "txt":
+                file_dict[f]["content"] = Persistence.read_txt_file(pf, comment_marker=None)
         subpath_info["file_details"] = file_dict
         subpath_dict[subpath] = subpath_info
     return subpath_dict
@@ -168,31 +166,46 @@ def parse_content(content: list):
     return content_dict
 
 
-def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ignore_files=[], save_file_info=True):
+def _clean_output_json(output: dict) -> dict:
+    """cleans the output"""
+    out = {}
+    for k, v in output.items():
+        if k.lower().endswith("txt"):
+            continue
+        out[k] = v
+    return out
+
+
+def rename_video_files(
+    info_dict, debug=False, save=True, ignore_folders=None, ignore_files=None, save_file_info=True
+) -> dict:
     """gets rename dictionary based on wither rename by file
     or infos in text files"""
+    _ignore_folders = [] if ignore_folders is None else ignore_folders
+    _ignore_files = [] if ignore_files is None else ignore_files
+
     rename_dict = {}
     num_renames = 0
-    ignore_folders = [f.lower() for f in ignore_folders]
+    _ignore_folders = [f.lower() for f in _ignore_folders]
     for p, p_info in info_dict.items():
         if not os.path.isdir(p):
             continue
         path_parts = [p.lower() for p in Path(p).parts]
         path_name = Path(p).absolute().name
-        skip_folder = [ignore_folder in path_part for path_part in path_parts for ignore_folder in ignore_folders]
+        skip_folder = [ignore_folder in path_part for path_part in path_parts for ignore_folder in _ignore_folders]
         skip_folder = any(skip_folder)
         if skip_folder:
-            print(f"{C_I}SKIP FOLDER {C_F}'{p}', {C_I}ignore folders: {C_F}{ignore_folders}")
+            print(f"{C_I}SKIP FOLDER {C_F}'{p}', {C_I}ignore folders: {C_F}{_ignore_folders}")
             continue
-        print(f"\n*** {p}")
+        print(f"\n{C_T}*** {p}")
         file_dict = p_info["file_details"]
         rename_info = {}
         for f, f_info in file_dict.items():
             if debug:
                 print(f"File {f}")
 
-            if any([f_ignore in f for f_ignore in ignore_files]):
-                print(f"{C_I}SKIP FILE {C_F}'{f}', {C_I}ignore files: {C_F}{ignore_files}")
+            if any([f_ignore in f for f_ignore in _ignore_files]):
+                print(f"{C_I}SKIP FILE {C_F}'{f}', {C_I}ignore files: {C_F}{_ignore_files}")
                 continue
 
             if not os.path.isfile(os.path.join(p, f)):
@@ -249,10 +262,10 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
                         if line:
                             print(f"{C_I}LINE:{line.strip()}")
                     if name_new != f:
-                        print(f"{C_I}*   {f} content:({len(content)})")
-                        print("{C_I}    " + name_new)
+                        print(f"{C_PY}🟩   {f} content:({len(content)})")
+                        print(f"{C_F}    " + name_new)
                     else:
-                        print(f"{C_I}#   {f} content:({len(content)}) ALREADY RENAMED")
+                        print(f"{C_Q}#   {f} content:({len(content)}) ALREADY RENAMED")
                     rename_info_dict["old_name"] = f
                     if f != name_new:
                         rename_info_dict["new_name"] = name_new
@@ -261,7 +274,7 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
 
             # no regex rules found replace by content/alt name if it is there
             if debug and not name_new:
-                print("{C_I}No rename rule was found")
+                print("f{C_I}No rename rule was found")
 
             if (not name_new) and parsed_content:
                 name_new = parsed_content.get("alt_name", "")
@@ -271,20 +284,20 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
                     if f != name_new:
                         rename_info_dict["new_name"] = name_new
                         num_renames += 1
-                        print(f"{C_I}*   {f} content:({len(content)})")
-                        print("{C_I}    " + name_new)
+                        print(f"🟨{C_I}   {f} content:({len(content)}){C_W} NO SERIES MATCH")
+                        print(f"{C_F}    " + name_new)
                     else:
-                        print(f"{C_I}#   {f} content:({len(content)}) ALREADY RENAMED")
+                        print(f"{C_Q}#   {f} content:({len(content)}) ALREADY RENAMED")
 
             rename_info[f] = rename_info_dict
 
         rename_dict[p] = rename_info
-        print(f"{C_I}    NUM RENAMES TOTAL: {num_renames}")
+        print(f"{C_PY}    NUM RENAMES TOTAL: {C_F}{num_renames}{C_0}")
 
     old_path = os.getcwd()
 
     execute = False
-    if save and num_renames > 0 and (input("{C_Q}Save Changes (y)?") == "y"):
+    if save and num_renames > 0 and (input(f"{C_Q}Save Changes (y)?") == "y"):
         execute = True
 
     if execute:
@@ -300,23 +313,27 @@ def rename_video_files(info_dict, debug=False, save=True, ignore_folders=[], ign
         if save_file_info:
             dt_now = datetime.now()
             dts = datetime.strftime(dt_now, "%Y%m%d_%H%M%S")
-            save_json("file_info_" + dts + ".json", p_renames)
+            output = _clean_output_json(p_renames)
+            save_json("file_info_" + dts + ".json", output)
 
         for f, f_info in p_renames.items():
             f_old_name = f_info.get("old_name", None)
             f_new_name = f_info.get("new_name", None)
             if f_new_name:
-                print(f"{C_I}    {f_old_name} -> {f_new_name}")
+                print(f"{C_PY}    {f_old_name} {C_T}->{C_F} {f_new_name}")
                 if execute:
                     try:
                         os.rename(f_old_name, f_new_name)
                     except OSError as e:
-                        print(C_E + e)
+                        print(C_E + str(e))
     os.chdir(old_path)
+
+    # remove all text info refs
+
     return rename_dict
 
 
-def get_parser() -> ArgumentParser:
+def create_arg_parser() -> ArgumentParser:
     """returns the argument parser"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", "-p", default=".", help="StartPath", metavar="File Path")
@@ -328,12 +345,12 @@ def get_parser() -> ArgumentParser:
         "--file_types", default=["txt", "mp4"], nargs="*", help="Filetypes to be processed", metavar="Filetypes"
     )
 
-    # save_file_info info: save metadata information as json into subfolders
+    # save_file_info info: save metadata information as json into subfolders by default is activated
     parser.add_argument(
-        "--save_file_info",
+        "--no_save_file_info",
         dest="save_file_info",
-        action="store_true",
-        help="save metadata from info file as json",
+        action="store_false",
+        help="do not save metadata from info file as json",
     )
 
     # multiple arguments call as params without brackets !
@@ -351,29 +368,35 @@ def get_parser() -> ArgumentParser:
     return parser
 
 
-if __name__ == "__main__":
-    argparser = get_parser()
-    args = argparser.parse_args()
-    print("{C_T}*** READING FILE INFO ")
-    print(f"{C_PY}Arguments {args}")
+def run_action(args: dict) -> None:
+    """select and run action"""
 
-    p = args.path
-    debug = args.debug
-    filetypes = args.file_types
-    save_file_info = args.save_file_info
-    ignore_paths = args.ignore_paths
-    ignore_files = args.ignore_files
-
-    if os.path.isdir(p):
-        root_path = str(Path(p).absolute())
-        print(f"{C_I}Using Path {root_path}")
-    else:
-        logger.error(f"ERROR: {p} is not a valid path")
-        sys.exit()
-
-    info_dict = get_file_dict(p, type_filters=filetypes)
-    rename_dict = rename_video_files(
-        info_dict, debug=debug, ignore_folders=ignore_paths, ignore_files=ignore_files, save_file_info=save_file_info
+    # use current path as dir
+    path = os.path.abspath(args.get("path", "."))
+    if not os.path.isdir(path):
+        print(f"🚨{C_E}video_rename: Path [{path}] doesn't exist{C_0}")
+        return
+    print(f"{C_T}*** READING FILE INFO ")
+    print(f"{C_PY}Arguments {C_F}{args}")
+    info_dict = get_file_dict(path, type_filters=args["file_types"])
+    _ = rename_video_files(
+        info_dict,
+        debug=args["debug"],
+        ignore_folders=args["ignore_paths"],
+        ignore_files=args["ignore_files"],
+        save_file_info=args["save_file_info"],
     )
+    # print(json.dumps(rename_dict, indent=4))
     print(C_0)
-    # idea: implement undo function using rename dict
+
+
+def main():
+    """main program, mr obvious 🤡."""
+    parser = create_arg_parser()
+    args = parser.parse_args()
+    args_dict = vars(args)
+    run_action(args_dict)
+
+
+if __name__ == "__main__":
+    main()
