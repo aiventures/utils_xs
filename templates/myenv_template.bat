@@ -65,5 +65,9 @@ rem Root Path to place Photo Folders
 set "MY_P_PHOTO_OUTPUT_ROOT=%MY_P_PHOTOS_TRANSIENT%\PHOTOS"
 rem Path where to place Images from Camera 
 set "MY_P_PHOTO_DUMP=%MY_P_PHOTO_OUTPUT_ROOT%\_DUMP"
+rem Here's the Defintions for EXIFTOOL Utility
+set "MY_EXIFTOOL_AUTHOR=HUGOAUTHOR"
+
+
 
 :end

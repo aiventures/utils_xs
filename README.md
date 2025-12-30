@@ -26,6 +26,7 @@ As python keeps its Environment within its runtime environment, there's a trick:
 * run `bat_s.bat` to search for available bat scripts by keywords (multiple keyword can be using `ALL` separator `;` and `ANY` separator `:` in a search string)
 
 # TODO
+* 🟨 `20251228` Create an EXIFTOOL Wrapper To Read/Write Image Metadata
 * 🟨 `20251006` Create a JSON from Python Constants Code 
 * 🟨 `20251006` Create a markdown toc summary function (`20251006`) 
 * 🟨 `20251006` Create shortcuts for frequently used `Git`, `Pip` and `VENV` commands
