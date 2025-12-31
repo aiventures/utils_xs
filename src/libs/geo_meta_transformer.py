@@ -565,7 +565,6 @@ class GeoMetaTransformer:
         return paths
 
 
-
 if __name__ == "__main__":
     # just show the paths
     # GeoMetaTransformer._dict_key_paths(SAMPLE_EXIFREVERSE["sample"], name="SAMPLE_EXIFREVERSE")

@@ -1,5 +1,5 @@
 @echo off
-rem py_img_metadata_update.bat [output_path|optional] Updates the metadata.json for each subfolder based on EXIF data
+rem TODO ADAPT py_img_metadata_update.bat [output_path|optional] Updates the metadata.json for each subfolder based on EXIF data
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
@@ -66,7 +66,8 @@ rem python "%py_program%" --p1 "%MY_F_MYENV_BAT%" --output "%MY_F_MYENV_PY%"
 goto end
 
 :end
-set "cmd_params=--output %path_output% --update"
+rem params in build_arg_parser
+set "cmd_params=--action_show_args --action_prepare_geo_meta"
 echo %C_H%RUN %C_PY%%py_program% %cmd_params%%C_0%
 python %py_program% %cmd_params%
 set p1=

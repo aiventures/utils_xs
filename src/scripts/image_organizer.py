@@ -223,6 +223,7 @@ from libs.geo import (
     DATETIME,
     ELEVATION,
     FILENAME,
+    FILEPATH,
     F_GPX_MERGED,
     # F_GPX_MERGED_JSON,
     F_GPX_MERGED_ENV,
@@ -280,6 +281,7 @@ from libs.helper import CmdRunner, Helper, Persistence
 from libs.reverse_geo import ReverseGeo
 from libs.exiftool import ExifTool, CMD_EXIFTOOL
 from libs.geo import IMAGE_SUFFIXES
+from libs.geo_meta_transformer import GeoMetaTransformer
 
 
 MY_P_PHOTO_DUMP = Path(MY_P_PHOTO_DUMP)
@@ -1120,13 +1122,67 @@ class ImageOrganizer:
 
         return _metadata
 
+    def get_image_datetime_from_exif(self, exif_metadata_image: dict) -> Optional[DateTime]:
+        """extracts date time from single image exif meta"""
+        # get date of creation
+        # try to get it from SubSecCreateDate
+        #  "SubSecCreateDate": "2025:08:31 16:08:29.87+02:00",
+        timezone_ = self._timezone
+        datetime_format: str = "%Y:%m:%d %H:%M:%S.%f"
+        datetime_s: Optional[str] = exif_metadata_image.get("Composite", {}).get("SubSecCreateDate")
+        datetime_image: Optional[DateTime] = None
+
+        # 1st fall back get it from EXIF
+        if datetime_s is None:
+            datetime_format = "%Y:%m:%d %H:%M:%S"
+            datetime_s = exif_metadata_image.get("EXIF", {}).get("DateTimeOriginal")
+
+        # 2nd fall back get it from File metadata
+        if datetime_s is None:
+            datetime_s = exif_metadata_image.get("File", {}).get("FileModifyDate")
+
+        if datetime_s is not None:
+            datetime_image = Helper.get_datetime_from_format_string(datetime_s, datetime_format, timezone_)
+            return datetime_image
+
+        return None
+
+    def _collect_metadata_by_image(self) -> Optional[dict]:
+        """gets all available metadata by file based on merged metadata.json"""
+        if self._metadata is None:
+            print(f"{C_E}🚨 No Metadata available, did you run merge_metadata ?{C_0}")
+            return
+        metadata_exif: dict = self._metadata.get(METADATA_EXIF, {})
+        # reverse geo from exiftool
+        image_geo_info: dict = self._metadata.get(IMAGE_GEO_INFO, {})
+        # reverse geo from web service
+        image_reverse_geo_info: dict = self._metadata.get(IMAGE_REVERSE_GEO_INFO, {})
+
+        out = {}
+        for filename, exifmeta in metadata_exif.items():
+            out[filename] = {
+                FILENAME: filename,
+                FILEPATH: exifmeta.get("SourceFile"),
+                DATETIME: self.get_image_datetime_from_exif(exifmeta),
+                METADATA_EXIF: exifmeta,
+                IMAGE_GEO_INFO: image_geo_info.get(filename, {}),
+                IMAGE_REVERSE_GEO_INFO: image_reverse_geo_info.get(filename, {}),
+            }
+
+        return out
+
     def _prepare_exiftool_import(self) -> Dict:
         """Based on previous actions, prepare a json file that can be used
         for changing EXIF Metadata using Exiftool"""
         out = {}
         _f_exiftool_import = self._f_exiftool_import
         # TODO IMPLEMENT
+        # self._metadata contains all updsated segemetns so far so we only have to collect everything for each image
+        # Persistence.save_json("hugo_tmp.json", self._metadata)
+        #  self._metadata [CONFIG_F_EXIFTOOL_IMPORT][FILES]
         print("HUGO")
+        _image_metadata = self._collect_metadata_by_image()
+
         return out
 
     def merge_metadata(self) -> Dict:
@@ -1178,12 +1234,13 @@ class ImageOrganizer:
             f_env = _path.joinpath(env_ref)
             # print(f_env)
             if not f_env.is_file():
+                print(f"{C_W}🚨 Refered reference {C_H}[{env_ref}] {C_F}[{f_env}] is not a file{C_0}")
                 continue
             env_file_ref = None
             try:
                 env_file_ref = Persistence.read_txt_file(f_env)[0].strip()
             except (IndexError, KeyError):
-                print(f"{C_E}🚨 Couldn't read file ref {C_F}[{f_env}]{C_0}")
+                print(f"{C_E}🚨 No valid fileref found / empty file {C_F}[{f_env}]{C_0}")
                 continue
             if not os.path.isfile(env_file_ref):
                 continue
@@ -1353,23 +1410,24 @@ class ImageOrganizer:
         - Extract lat lon default from OSM links => F_LAT_LON_ENV
         """
 
-        # get the
-
         print(f"{C_T}### ImageOrganizer: prepare_collateral_files")
         # 0. Delete any temporary files
         self.cleanup_env_files(delete_generated_files=True)
-        # Create the EXIF metadata
 
+        # Create the EXIF metadata
         # cmd = self.get_exiftool_cmd_export_meta()
-        cmd = self._exiftool.cmd_export_meta()
-        print(f"{C_H}    Create Metadata: {C_PY}[{cmd}]{C_0}")
-        # TODO replace by variable
+
+        # 1. All Metadata => metadata_exif.json
+        # Exporting all metadata in a path into a json f_metadata_exif (metadata_exif.json)
+        # runs: exiftool -r -g -c %.6f -progress 50 -json -<extensions> ...
+        cmd_export_metadata = self._exiftool.cmd_export_meta()
+        print(f"{C_H}    Create Metadata: {C_PY}[{cmd_export_metadata}]{C_0}")
         f_metadata_exif = self._path.joinpath(f_metadata_exif)
-        exif_metadata_created = CmdRunner.run_cmd_and_stream(cmd, f_metadata_exif)
+        exif_metadata_created = CmdRunner.run_cmd_and_stream(cmd_export_metadata, f_metadata_exif)
         if exif_metadata_created:
             Persistence.save_txt(self._path / F_METADATA_EXIF_ENV, str(f_metadata_exif))
 
-        # 1. Create Merged GPS, if not already present
+        # 2. Create Merged GPS, if not already present: all gpx files => gpx_merged.gpx
         f_gpx = GeoLocation.merge_gpx(self._path, self._f_gpx_merged)
         gpx_file_created = False if f_gpx is None else True
         if gpx_file_created:
@@ -1377,7 +1435,7 @@ class ImageOrganizer:
             # store the file name of the merged gpx into an env file
             Persistence.save_txt(self._path.joinpath(F_GPX_MERGED_ENV), str(self._path.joinpath(f_gpx_merged)))
 
-        # 2. Select Reference File and extract timestanp of camera
+        # 3. Select Reference File and extract timestanp of camera: = => timestamp_img.env
         timstamp_dict_camera: Dict = self.extract_image_timestamp()
         timestamp_camera_extracted = True if len(timstamp_dict_camera) > 0 else False
         if timestamp_camera_extracted:
@@ -1385,11 +1443,13 @@ class ImageOrganizer:
         else:
             print(f"{C_W}No image timestamp extracted{C_0}")
 
-        # 3. Now Get the GPS Timestamp (as seen on the image of the previous image)
+        # 4. Now Get the GPS Timestamp (as seen on the image of the previous image)
+        #    Writes: offset.env, offset_sec.env, timestamp_gps.json, timestamp_camera.json
         time_offset = self.calculate_time_offset()
         print(f"{C_H}Image Offset: {C_PY}[{time_offset}]{C_0}")
 
         # 4. Extract the OSM Link as default GPS Coordinates
+        #   writes an existing of the existing openstreetmap.org links => osm.json,
         f_osm_info = F_OSM
         lat_lon = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, self._path)
         lat_lon_extracted = False if lat_lon is None else True
@@ -1399,11 +1459,24 @@ class ImageOrganizer:
 
         # 5. create a dict with all geo info metadata from osm link
         # - will be either created from reverse geo or from exiftool geolocation API
-        # 6. Create a metadata json containing everything
+        # Create a metadata json containing everything
         print(f"{C_H}    Processing Metadata{C_0}")
+        # Will populate segments and refer single files
+        # f_metadata
+        # f_metadata_exif
+        # f_timestamp_img
+        # f_osm
+        # f_gpx_merged
+        # f_timestamp_camera
+        # f_timestamp_gps
+        # f_metadata_geo_reverse
+        # f_exiftool_import
+
+        # dict of merged meta data is returned / it's also in self._metadata
         _ = self.merge_metadata()
 
-        # 7. Get the GPS metadata
+        # 6. Get the GPS metadata and add it to the merged file
+        # if already saved
         # - use the collected exif data as input list
         # - amend the metadata.
         # - get latlon from track or from osm fallback
