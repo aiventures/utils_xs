@@ -252,6 +252,7 @@ from libs.geo import (
     FILES_ENV,
     # LAT_LON_ORIGIN,
     GPS_TRACK,
+    TRACK,
     HEARTRATE,
     IMAGE_GEO_INFO,
     IMAGE_REVERSE_GEO_INFO,
@@ -1158,23 +1159,42 @@ class ImageOrganizer:
         # reverse geo from web service
         image_reverse_geo_info: dict = self._metadata.get(IMAGE_REVERSE_GEO_INFO, {})
 
+        # also try to get the gps track entry if existent
+        gps_track: Optional[dict] = self._metadata.get(GPS_TRACK, {}).get(TRACK)
+
         out = {}
         for filename, exifmeta in metadata_exif.items():
+            _image_geo_info = image_geo_info.get(filename)
+            _image_reverse_geo_info = image_reverse_geo_info.get(filename)
+
             out[filename] = {
                 FILENAME: filename,
                 FILEPATH: exifmeta.get("SourceFile"),
                 DATETIME: self.get_image_datetime_from_exif(exifmeta),
                 METADATA_EXIF: exifmeta,
-                IMAGE_GEO_INFO: image_geo_info.get(filename, {}),
-                IMAGE_REVERSE_GEO_INFO: image_reverse_geo_info.get(filename, {}),
+                IMAGE_GEO_INFO: _image_geo_info,
+                IMAGE_REVERSE_GEO_INFO: _image_reverse_geo_info,
+                GPS_TRACK: None,
             }
+
+            # get the gps track data entry from the metadata dictionary
+            if gps_track is not None:
+                timestamp: Optional[int] = None
+                # try to get timestamp from reverse geo
+                if isinstance(image_reverse_geo_info, dict):
+                    timestamp = image_reverse_geo_info.get("extra", {}).get("timestamp_utc")
+                # try to get from exiftool reverse geo api
+                elif isinstance(image_geo_info, dict):
+                    timestamp = image_geo_info.get("gps_info", {}).get("timestamp_gps")
+                if timestamp is not None:
+                    out[filename][GPS_TRACK] = gps_track.get(str(timestamp))
 
         return out
 
-    def _prepare_exiftool_import(self) -> Dict:
+    def _prepare_exiftool_import(self) -> List[Dict]:
         """Based on previous actions, prepare a json file that can be used
         for changing EXIF Metadata using Exiftool"""
-        out = {}
+        out = []
         _f_exiftool_import = self._f_exiftool_import
         # TODO IMPLEMENT
         # self._metadata contains all updsated segemetns so far so we only have to collect everything for each image
@@ -1182,6 +1202,14 @@ class ImageOrganizer:
         #  self._metadata [CONFIG_F_EXIFTOOL_IMPORT][FILES]
         print("HUGO")
         _image_metadata = self._collect_metadata_by_image()
+        _num_images = len(_image_metadata)
+        print(f"{C_H}📷 [ImageOrganizer] Prepare Metadata Mapping for [{_num_images}] Images{C_0}")
+        for _idx, (_filename, _img_metadata) in enumerate(_image_metadata.items()):
+            Helper.show_progress(_idx, _num_images, "Mapped Images")
+            # _geo_meta_transformer(file)
+            pass
+
+        # print(f"{C_H}🌍 Reading reverse geo info from reverse geo service{C_0}")
 
         return out
 
