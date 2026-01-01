@@ -2,6 +2,8 @@
 exiftool -json -g -c '%.6f' *.jpg > makernotes.json
 """
 
+from typing import Optional
+
 # KEYS
 FUJI = "FUJI"
 LEICA = "LEICA_DLUX"
@@ -58,6 +60,8 @@ EXIF_META_SELECTED = {
             "FileCreateDate",
             "ImageWidth",
             "ImageHeight",
+            "FileType",
+            "FileTypeExtension",
         ],
         EXIF: [
             "ApertureValue",
@@ -495,6 +499,102 @@ EXIF_META_ALL = {
         ],
     },
 }
+
+
+class ExifToolFieldsMapper:
+    """class to parse image meta data and to export keywords, etc"""
+
+    def __init__(self, metadata: dict):
+        self._metadata: dict = metadata
+        self._metadata_file: dict = metadata.get(FILE, {})
+        self._metadata_exif: dict = metadata.get(EXIF, {})
+        self._metadata_composite: dict = metadata.get(COMPOSITE, {})
+        self._metadata_makernotes: dict = metadata.get(MAKERNOTES, {})
+        self._camera = self._metadata_exif.get("Make", "na").lower()
+        # get the camer tyoe
+        if "fuji" in self._camera:
+            self._camera = FUJI
+        elif "leica" in self._camera:
+            self._camera = LEICA
+
+    def _get_camera(self) -> str:
+        """determines the camera string"""
+        make = self._metadata_exif.get("Make")
+        model = self._metadata_exif.get("Model")
+        if self._camera == FUJI:
+            return f"{make} {model}"
+        if self._camera == LEICA:
+            # for leica we make and model are redundantly used
+            return f"{model}"
+        return "unknown"
+
+    def _get_lens(self) -> str:
+        """gets the lens model"""
+        # only het the first part
+        lensmake: str = (self._metadata_exif.get("LensMake", "unknown").split()[0]).strip()
+        lensinfo: str = (self._metadata_exif.get("LensInfo", "unknown")).strip()
+        return f"{lensmake} {lensinfo}"
+
+    def _get_shot_info(self) -> list[str]:
+        """get classic image params ISO,f,F, ..."""
+        out = []
+
+        ### COMPOSITE INFO
+
+        # float values
+        crop_factor: Optional[float] = str(self._metadata_composite.get("ScaleFactor35efl"))
+        crop_factor_s = f"crop {str(crop_factor)}"
+        aperture: Optional[float] = str(self._metadata_composite.get("Aperture"))
+        aperture_s = f"F{str(aperture)}"
+
+        mp: Optional[float] = round(self._metadata_composite.get("Megapixels", 0.0), 1)
+        mp_s = f"{str(mp)}MPix"
+        lv: Optional[float] = round(self._metadata_composite.get("LightValue", 0.0), 1)
+        lv_s = f"{str(lv)}EV"
+
+        # string values
+        # circle of confusion in micrometers
+        coc: Optional[float] = int(1000 * float((self._metadata_composite.get("CircleOfConfusion", 0.0)).split()[0]))
+        coc_s = f"coc {str(coc)}um"
+        fov: Optional[float] = round(float(self._metadata_composite.get("FOV", "0.0").split()[0]), 0)  # field of view
+        fov_s = f"fov {str(fov)}deg"
+        hfd: Optional[str] = (self._metadata_composite.get("HyperfocalDistance", "NA")).replace(" ", "")
+        hfd_s = f"hyperfocal {hfd}"
+
+        ### EXIF INFO
+        f_number: Optional[float] = round(self._metadata_exif.get("FNumber", 0.0), 1)
+        f_number_s = f"F{str(fov)}"
+
+        iso: Optional[float] = round(self._metadata_exif.get("ISO", 0.0), 0)
+        iso_s = f"ISO{str(iso)}"
+        exposure_time: Optional[str] = self._metadata_exif.get("ExposureTime", "") + "s"
+        focal_length: Optional[str] = self._metadata_exif.get("FocalLength", "NA").replace(" ", "")
+        focal_length_s = "f{focal_length}"
+        focal_length_35mm: Optional[str] = self._metadata_exif.get("FocalLengthIn35mmFormat", "NA").replace(" ", "")
+        focal_length_35mm_s = "f{focal_length} FullFrame"
+        return out
+
+    def _get_maker_info_fuji(self) -> list[str]:
+        """return camera specific maker notes for FUJI"""
+        out = []
+        # TODO IMPLEMENT
+        return out
+
+    def _get_maker_info_leica(self) -> list[str]:
+        """return camera specific maker notes for FUJI"""
+        out = []
+        # TODO IMPLEMENT
+
+        return out
+
+    def _get_maker_info(self) -> list[str]:
+        """return camera specific maker notes"""
+        if self._camera == FUJI:
+            return self._get_maker_info_fuji()
+        elif self._camera == LEICA:
+            return self._get_maker_info_leica()
+        return []
+
 
 # Example usage:
 if __name__ == "__main__":
