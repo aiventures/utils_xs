@@ -12,6 +12,7 @@ GENERIC = "GENERIC"
 SOURCE_FILE = "SourceFile"
 EXIFTOOL = "ExifTool"
 FILE = "File"
+IPTC = "EXIF"
 EXIF = "EXIF"
 FLASHPIX = "FlashPix"
 MAKERNOTES = "MakerNotes"
@@ -19,6 +20,7 @@ PRINTIM = "PrintIM"
 XMP = "XMP"
 MPF = "MPF"
 COMPOSITE = "Composite"
+IGNORE_META = ["off", "n/a", "normal"]
 
 # Parameters to be copied into keywords field
 EXIF_META_SELECTED = {
@@ -62,6 +64,30 @@ EXIF_META_SELECTED = {
             "ImageHeight",
             "FileType",
             "FileTypeExtension",
+        ],
+        IPTC: [
+            "CodedCharacterSet",
+            "EnvelopeRecordVersion",
+            "Caption-Abstract",
+            "Writer-Editor",
+            "Headline",
+            "SpecialInstructions",
+            "By-line",
+            "By-lineTitle",
+            "Credit",
+            "Source",
+            "ObjectName",
+            "DateCreated",
+            "City",
+            "Sub-location",
+            "Province-State",
+            "Country-PrimaryLocationName",
+            "OriginalTransmissionReference",
+            "Category",
+            "SupplementalCategories",
+            "Urgency",
+            "Keywords",
+            "CopyrightNotice",
         ],
         EXIF: [
             "ApertureValue",
@@ -126,6 +152,30 @@ EXIF_META_ALL = {
             "BitsPerSample",
             "ColorComponents",
             "YCbCrSubSampling",
+        ],
+        IPTC: [
+            "CodedCharacterSet",
+            "EnvelopeRecordVersion",
+            "Caption-Abstract",
+            "Writer-Editor",
+            "Headline",
+            "SpecialInstructions",
+            "By-line",
+            "By-lineTitle",
+            "Credit",
+            "Source",
+            "ObjectName",
+            "DateCreated",
+            "City",
+            "Sub-location",
+            "Province-State",
+            "Country-PrimaryLocationName",
+            "OriginalTransmissionReference",
+            "Category",
+            "SupplementalCategories",
+            "Urgency",
+            "Keywords",
+            "CopyrightNotice",
         ],
         EXIF: [
             "Make",
@@ -302,6 +352,30 @@ EXIF_META_ALL = {
             "BitsPerSample",
             "ColorComponents",
             "YCbCrSubSampling",
+        ],
+        IPTC: [
+            "CodedCharacterSet",
+            "EnvelopeRecordVersion",
+            "Caption-Abstract",
+            "Writer-Editor",
+            "Headline",
+            "SpecialInstructions",
+            "By-line",
+            "By-lineTitle",
+            "Credit",
+            "Source",
+            "ObjectName",
+            "DateCreated",
+            "City",
+            "Sub-location",
+            "Province-State",
+            "Country-PrimaryLocationName",
+            "OriginalTransmissionReference",
+            "Category",
+            "SupplementalCategories",
+            "Urgency",
+            "Keywords",
+            "CopyrightNotice",
         ],
         EXIF: [
             "Make",
@@ -507,6 +581,7 @@ class ExifToolFieldsMapper:
     def __init__(self, metadata: dict):
         self._metadata: dict = metadata
         self._metadata_file: dict = metadata.get(FILE, {})
+        self._metadata_iptc: dict = metadata.get(IPTC, {})
         self._metadata_exif: dict = metadata.get(EXIF, {})
         self._metadata_composite: dict = metadata.get(COMPOSITE, {})
         self._metadata_makernotes: dict = metadata.get(MAKERNOTES, {})
@@ -517,7 +592,7 @@ class ExifToolFieldsMapper:
         elif "leica" in self._camera:
             self._camera = LEICA
 
-    def _get_camera(self) -> str:
+    def _get_camera_info(self) -> str:
         """determines the camera string"""
         make = self._metadata_exif.get("Make")
         model = self._metadata_exif.get("Model")
@@ -526,74 +601,160 @@ class ExifToolFieldsMapper:
         if self._camera == LEICA:
             # for leica we make and model are redundantly used
             return f"{model}"
-        return "unknown"
+        return "unknown camera"
 
-    def _get_lens(self) -> str:
+    def _get_lens_info(self) -> str:
         """gets the lens model"""
         # only het the first part
-        lensmake: str = (self._metadata_exif.get("LensMake", "unknown").split()[0]).strip()
-        lensinfo: str = (self._metadata_exif.get("LensInfo", "unknown")).strip()
+        lensmake: str = (self._metadata_exif.get("LensMake", "unknown_lens").split()[0]).strip()
+        lensinfo: str = (self._metadata_exif.get("LensInfo", "lensinfo")).strip()
         return f"{lensmake} {lensinfo}"
 
     def _get_shot_info(self) -> list[str]:
         """get classic image params ISO,f,F, ..."""
         out = []
 
-        ### COMPOSITE INFO
+        attributes_composite = [
+            "ScaleFactor35efl",
+            "Aperture",
+            "Megapixels",
+            "LightValue",
+            "CircleOfConfusion",
+            "FOV",
+            "HyperfocalDistance",
+        ]
 
-        # float values
-        crop_factor: Optional[float] = str(self._metadata_composite.get("ScaleFactor35efl"))
-        crop_factor_s = f"crop {str(crop_factor)}"
-        aperture: Optional[float] = str(self._metadata_composite.get("Aperture"))
-        aperture_s = f"F{str(aperture)}"
+        attributes_dict = {
+            attribute: self._metadata_composite.get(attribute)
+            for attribute in attributes_composite
+            if self._metadata_composite.get(attribute) is not None
+        }
 
-        mp: Optional[float] = round(self._metadata_composite.get("Megapixels", 0.0), 1)
-        mp_s = f"{str(mp)}MPix"
-        lv: Optional[float] = round(self._metadata_composite.get("LightValue", 0.0), 1)
-        lv_s = f"{str(lv)}EV"
+        attributes_exif = ["ISO", "ExposureTime", "FocalLength", "FocalLengthIn35mmFormat"]
 
-        # string values
-        # circle of confusion in micrometers
-        coc: Optional[float] = int(1000 * float((self._metadata_composite.get("CircleOfConfusion", 0.0)).split()[0]))
-        coc_s = f"coc {str(coc)}um"
-        fov: Optional[float] = round(float(self._metadata_composite.get("FOV", "0.0").split()[0]), 0)  # field of view
-        fov_s = f"fov {str(fov)}deg"
-        hfd: Optional[str] = (self._metadata_composite.get("HyperfocalDistance", "NA")).replace(" ", "")
-        hfd_s = f"hyperfocal {hfd}"
+        exif_dict = {
+            attribute: self._metadata_exif.get(attribute)
+            for attribute in attributes_exif
+            if self._metadata_exif.get(attribute) is not None
+        }
 
-        ### EXIF INFO
-        f_number: Optional[float] = round(self._metadata_exif.get("FNumber", 0.0), 1)
-        f_number_s = f"F{str(fov)}"
+        attributes_dict.update(exif_dict)
 
-        iso: Optional[float] = round(self._metadata_exif.get("ISO", 0.0), 0)
-        iso_s = f"ISO{str(iso)}"
-        exposure_time: Optional[str] = self._metadata_exif.get("ExposureTime", "") + "s"
-        focal_length: Optional[str] = self._metadata_exif.get("FocalLength", "NA").replace(" ", "")
-        focal_length_s = "f{focal_length}"
-        focal_length_35mm: Optional[str] = self._metadata_exif.get("FocalLengthIn35mmFormat", "NA").replace(" ", "")
-        focal_length_35mm_s = "f{focal_length} FullFrame"
+        attributes_numerical = ["ScaleFactor35efl", "Aperture", "Megapixels", "LightValue", "ISO"]
+        # mapping metadata attributes to keyvalue attributes
+        attribute_text_map = {
+            "FocalLength": "f",  # 33.0 mm
+            "FocalLengthIn35mmFormat": "f(FullFrame)",  # 50 mm
+            "FOV": "FoV",  # 38.9 deg
+            "ExposureTime": "T",  # "1/900
+            "Aperture": "F",  # 2.7
+            "ISO": "ISO",  # 125
+            "LightValue": "EV",  # 6.8
+            "ScaleFactor35efl": "Crop",  # 2.2
+            "Megapixels": "MPix",  # 16.8
+            "CircleOfConfusion": "coc",  # 0.014 mm"
+            "HyperfocalDistance": "hfD",  # 14.46 m
+        }
+
+        # used units in metadata
+        units = ["mm", "m", "deg"]
+
+        # now create keywords if existent
+        for attribute, attribute_text in attribute_text_map.items():
+            value = attributes_dict.get(attribute)
+            if value is None:
+                continue
+            if attribute in attributes_numerical:
+                value = str(value)
+            # special case convert coc to um
+            if attribute == "CircleOfConfusion":
+                value = round(1000 * float(value.split()[0]), 0)
+                value = f"str({value})um"
+
+            # drop all spaces
+            value = value.replace(" ", "")
+            out.append(f"{attribute_text} {value}")
         return out
 
-    def _get_maker_info_fuji(self) -> list[str]:
+    def _get_makernotes(self, makernotes: dict, attributes: list[str]) -> dict:
+        """creates the list of makernote attributes"""
+        out = {}
+        for attribute in attributes:
+            value = makernotes.get(attribute)
+            if value is None:
+                continue
+            # check if all items are normal
+            num_ignore = len([im for im in IGNORE_META if im in attribute.lower()])
+            if num_ignore > 0:
+                continue
+            out[attribute] = f"{attribute} ({str(value)})"
+        return out
+
+    def _get_makernotes_fuji(self) -> list[str]:
         """return camera specific maker notes for FUJI"""
-        out = []
-        # TODO IMPLEMENT
-        return out
 
-    def _get_maker_info_leica(self) -> list[str]:
+        attributes = [
+            "FilmMode",
+            "ColorChromeEffect",
+            "ColorChromeFXBlue",
+            "GrainEffectRoughness",
+            "GrainEffectSize",
+            "ImageCount",
+        ]
+
+        return list(self._get_makernotes(self._metadata_makernotes, attributes).values())
+
+    def _get_makernotes_leica(self) -> list[str]:
         """return camera specific maker notes for FUJI"""
-        out = []
-        # TODO IMPLEMENT
+        attributes = [
+            "PhotoStyle",
+            "FilterEffect",
+            "MonochromeFilterEffect",
+            "MonochromeGrainEffect",
+            "SceneMode",
+            "ColorTempKelvin",
+            "AFPointPosition",
+            "FilterEffect",
+        ]
 
+        return list(self._get_makernotes(self._metadata_makernotes, attributes).values())
+
+    def _get_iptc_metadata(self) -> list[str]:
+        """get any existing IPTC makernotes"""
+        out = []
+        attributes: dict = {
+            "ObjectName": "Geo-Object",
+            "City": "Geo-City",
+            "Sub-location": "Geo-Location",
+            "Province-State": "Geo-State",
+            "Country-PrimaryLocationName": "Geo-Country",
+        }
+
+        mapped_attributes: dict[str, str] = self._get_makernotes(self._metadata_iptc, list(attributes.keys()))
+        # remap the key values to be used in Keywords list
+        for attribute, mapped_value in mapped_attributes.items():
+            out.append(mapped_value.replace(attribute, attributes[attribute]))
         return out
 
-    def _get_maker_info(self) -> list[str]:
-        """return camera specific maker notes"""
+    def _get_makernotes_keywords(self) -> list[str]:
+        """return camera specific maker notes as keywords"""
         if self._camera == FUJI:
-            return self._get_maker_info_fuji()
+            return self._get_makernotes_fuji()
         elif self._camera == LEICA:
-            return self._get_maker_info_leica()
+            return self._get_makernotes_leica()
         return []
+
+    def get_keywords(self) -> list[str]:
+        """get list of keywords as per submitted metadata"""
+        # camera metadata
+        out = [self._get_camera_info(), self._get_lens_info]
+        # camera settings
+        out.extend(self._get_shot_info())
+        # camera makernotes
+        out.extend(self._get_makernotes_keywords())
+        # iptc data / geodata if existent
+        out.extend(self._get_iptc_metadata())
+        return out
 
 
 # Example usage:
