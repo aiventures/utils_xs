@@ -147,7 +147,7 @@ Program steps
         - after moving is completed, list all files that couldn't be moved as error messages. Or in case all file could be moved, isssue a success message
 
 Also add to the program
-- Add ANSI COLOR CODES so it is possible to use colored output using f strings like f"{C_T}text{C_0}".
+- Add ANSI COLOR CODES so it is possible to use colored output using f strings like f"{C_T}text".
   Use following Color Codes according to their denoted meaning and proposals for ansi color code to use
   rem reset all color formatting
   - C_0 (COL_RESET) is used for resetting color to default pronpt colors
@@ -194,6 +194,29 @@ from dateutil import parser as date_parser
 
 # ANSI color codes
 from config.colors import C_0, C_B, C_E, C_F, C_H, C_I, C_L, C_P, C_PY, C_Q, C_S, C_T, C_W
+
+# custom print commands / note that MY_ENV_PRINT_SHOW_EMOJI and MY_ENV_PRINT_SHOW_EMOJI
+# need to be set accordingly in environment to reflect certain debug levels
+from libs.custom_print import (
+    print_json,
+    printd,
+    printe,
+    printw,
+    printt,
+    printh,
+    printi,
+    set_print_level,
+    printpy,
+    inputc,
+)
+
+
+from libs.geo_meta_transformer import GeoMetaTransformer
+from libs.exiftool_fields import ExifToolFieldsMapper
+
+from libs.exiftool_fields import IPTC, EXIF
+
+
 from libs.geo import (
     CONFIG_F_GPX_MERGED,
     # GeotrackerGPXDATA,
@@ -261,7 +284,9 @@ from libs.geo import (
     # OFFSET_GPS,
     LAT_LON,
     METADATA_EXIF,
+    METADATA_IPTC,
     METADATA_OSM,
+    # METADATA_GEO,
     OFFSET,
     OFFSET_SECS,
     # TIMESTAMP_IMAGE,
@@ -271,7 +296,7 @@ from libs.geo import (
     TIMEZONE,
     TIMEZONE_DEFAULT,
     # EXIFTOOL METADATA IMPORT DEFINITIONS
-    EXIFTOOL_METADATA_IMPORT,
+    # EXIFTOOL_METADATA_IMPORT,
     CONFIG_F_EXIFTOOL_IMPORT,
     CONFIG_F_EXIFTOOL_IMPORT_ENV,
 )
@@ -369,6 +394,7 @@ class GeoLocation:
 
     @staticmethod
     def create_gpx_header(soup: BeautifulSoup) -> Tag:
+        """Create the header for the GPX Track"""
         gpx_tag = soup.new_tag("gpx")
         gpx_tag.attrs = {
             "creator": "Garmin Connect",
@@ -524,12 +550,12 @@ class GeoLocation:
             if overwrite:
                 os.remove(str(f_output))
             else:
-                print(f"{C_T}File {C_F}[{f_output}]{C_T} already exists {C_0}")
+                printt(f"File {C_F}[{f_output}]{C_T} already exists")
                 return
 
         gpx_files = sorted(p_source.glob("*.gpx"))
         if not gpx_files:
-            print(f"{C_E}🚨 No GPX files found in {C_F}{p_source}{C_0}")
+            printe(f"No GPX files found in {C_F}{p_source}")
             return None
 
         metadata_time_map = {}
@@ -565,9 +591,8 @@ class GeoLocation:
         try:
             trkpt_elements.sort(key=trkpt_time)
         except TypeError as _:
-            print(f"{C_E}🚨 Error Occured merging GPX tracks (mixing time tags?)")
-            print(traceback.format_exc())
-            print(f"{C_0}")
+            printe(" Error Occured merging GPX tracks (mixing time tags?)")
+            printpy(traceback.format_exc())
 
             return None
 
@@ -602,7 +627,7 @@ class GeoLocation:
                     try:
                         timestamp = DateTime.fromisoformat(time_tag.text.replace("Z", "+00:00"))
                         if timestamp in seen_timestamps:
-                            print(f"{C_W}Found duplicate timestamp in tracks {C_H}{timestamp}{C_0}")
+                            printw(f"Found duplicate timestamp in tracks {C_H}{timestamp}")
                             continue  # Skip duplicate
                         seen_timestamps.add(timestamp)
                     except Exception:
@@ -616,11 +641,11 @@ class GeoLocation:
         soup_str = soup_out.prettify()
         Persistence.save_txt(f_output, soup_str)
 
-        print(f"{C_T}Merged GPX saved to {C_H}{f_output}{C_0}")
+        printt(f"Merged GPX saved to {C_H}{f_output}")
         if create_json:
             f_output_json = f_output.parent.joinpath(f"{f_output.stem}.json")
             _ = GeoLocation.create_dict_from_gpx(p_source=f_output, f_output=f_output_json)
-            print(f"{C_T}Merged GPX JSON saved to {C_H}{f_output_json}{C_0}")
+            printt(f"Merged GPX JSON saved to {C_H}{f_output_json}")
 
             # print(json.dumps(_, indent=4))
             # GeoLocation.create_dict_from_gpx()
@@ -671,16 +696,16 @@ class GeoLocation:
         """
         folder = folder or Path.cwd()
         if not folder.exists() or not folder.is_dir():
-            print(f"{C_E}🚨 Invalid folder: {folder}{C_0}")
+            printe("Invalid folder: {folder}")
             return None
 
         env_file = folder / file
         if env_file.exists():
             try:
                 env_file.unlink()
-                print(f"{C_T}Deleted existing {env_file}{C_0}")
+                printt(f"Deleted existing {env_file}")
             except Exception as e:
-                print(f"{C_E}🚨 Failed to delete {env_file}: {e}{C_0}")
+                printe(f"Failed to delete {env_file}: {e}")
 
         url_files = list(folder.glob("*.url"))
         output = {}
@@ -698,14 +723,14 @@ class GeoLocation:
                 continue
 
         if not output:
-            print(f"{C_W}No OpenStreetMap links with coordinates found in {folder}{C_0}")
+            printw(f"No OpenStreetMap links with coordinates found in {folder}")
             return None
 
         if len(output) == 1:
             selected = next(iter(output.values()))
-            print(f"{C_T}Found one OpenStreetMap link: {C_P}{selected['file']}{C_0}")
+            printt(f"Found one OpenStreetMap link: {C_P}{selected['file']}")
         else:
-            print(f"{C_T}Multiple OpenStreetMap links found:{C_0}")
+            printt("Multiple OpenStreetMap links found:")
             for idx, info in output.items():
                 coords = info.get("lat_lon", ("NA", "NA"))
                 geo_info = info.get("geo_info", "NA")
@@ -715,17 +740,17 @@ class GeoLocation:
                 )
 
             try:
-                choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
+                choice = int(inputc("Enter number of file to use").strip())
                 selected = output[choice]
             except (ValueError, IndexError):
-                print(f"{C_E}🚨 Invalid selection. No coordinates returned.{C_0}")
+                printe("Invalid selection. No coordinates returned.")
                 return None
 
         try:
             Persistence.save_json(env_file, selected)
-            print(f"{C_H}Saved Geo Info to {C_P}{env_file}{C_0}")
+            printh(f"Saved Geo Info to {C_P}{env_file}")
         except Exception as e:
-            print(f"{C_E}🚨 Failed to write coordinates: {e}{C_0}")
+            printe("Failed to write coordinates: {e}")
 
         return selected
 
@@ -744,43 +769,43 @@ class GeoLocation:
         """
         folder = folder or Path.cwd()
         if not folder.exists() or not folder.is_dir():
-            print(f"{C_E}🚨 Invalid folder: {folder}{C_0}")
+            printe("Invalid folder: {folder}")
             return None
 
         env_file = folder / file
         if env_file.exists():
             try:
                 env_file.unlink()
-                print(f"{C_T}Deleted existing {env_file}{C_0}")
+                printt(f"Deleted existing {env_file}")
             except Exception as e:
-                print(f"{C_E}🚨 Failed to delete {env_file}: {e}{C_0}")
+                printe(f"Failed to delete {env_file}: {e}")
 
         gpx_files = list(folder.glob("*.gpx"))
         if not gpx_files:
-            print(f"{C_E}🚨 No GPX files found in {folder}{C_0}")
+            printe("No GPX files found in {folder}")
             return None
 
         if len(gpx_files) == 1:
             selected = gpx_files[0].name
             try:
                 env_file.write_text(selected + "\n", encoding="utf-8")
-                print(f"{C_H}Saved GPX filename [{selected}] to {C_P}{env_file}{C_0}")
+                printh(f"Saved GPX filename [{selected}] to {C_P}{env_file}")
             except Exception as e:
-                print(f"{C_E}🚨 Failed to write GPX filename: {e}{C_0}")
+                printe(f"Failed to write GPX filename: {e}")
             return selected
 
-        print(f"{C_T}Multiple GPX files found:{C_0}")
+        printt("Multiple GPX files found:")
         for idx, f in enumerate(gpx_files):
             print(f"{C_I}[{idx}] {C_P}{f.name}{C_0}")
 
         try:
-            choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
+            choice = int(inputc("Enter number of file to use").strip())
             selected = gpx_files[choice].name
             env_file.write_text(selected + "\n", encoding="utf-8")
-            print(f"{C_H}Saved GPX filename [{selected}] to {C_P}{env_file}{C_0}")
+            printh(f"Saved GPX filename [{selected}] to {C_P}{env_file}")
             return selected
         except (ValueError, IndexError):
-            print(f"{C_E}🚨 Invalid selection. No GPX file saved.{C_0}")
+            printe("Invalid selection. No GPX file saved.")
             return
 
 
@@ -815,7 +840,7 @@ class ImageOrganizer:
         if path is not None:
             _path = Path(path)
         if not _path.is_dir():
-            print(f"{C_E}🚨 [ImageOrganizer] No valid path {_path}{C_0}")
+            printe("[ImageOrganizer] No valid path {_path}")
             return None
         self._path: Path = _path.absolute()
 
@@ -934,17 +959,17 @@ class ImageOrganizer:
                 print(out_str)
 
             else:
-                print(f"{C_W}🚨 Metadata File [{_file_name}] has out of bounds time [{_datetime}]{C_0}")
+                printw("Metadata File [{_file_name}] has out of bounds time [{_datetime}]")
 
         except (ValueError, KeyError) as e:
-            print(f"{C_E}🚨 Metadata File [{_file_name}] has unexpected format, {e}{C_0}")
+            printe(f"Metadata File [{_file_name}] has unexpected format, Error: {e}")
 
         if not os.path.isfile(_file_name_absolute):
-            print(f"{C_E}🚨 File [{_file_name_absolute}] doesn't exist.{C_0}")
+            printe("File [{_file_name_absolute}] doesn't exist.")
             return
 
         if _lat_lon is None:
-            print(f"{C_W}🚨 File [{_file_name_absolute}] no coordinates found.{C_0}")
+            printw(f"File [{_file_name_absolute}] no coordinates found.")
             return
 
         # return the dict
@@ -960,7 +985,7 @@ class ImageOrganizer:
     ) -> Dict:
         """Based on the metadata file, collect metadata for all images"""
         if self._metadata is None:
-            print(f"{C_E}🚨 No Metadata available, did you run merge_metadata ?{C_0}")
+            printe("No Metadata available, did you run merge_metadata ?")
             return {}
 
         if self._use_reverse_geo is False:
@@ -994,12 +1019,12 @@ class ImageOrganizer:
             _metadata_osm[IMAGE_REVERSE_GEO_INFO] = _reverse_geo_osm
 
         if _reverse_geo_metadata is None:
-            print(f"{C_H}🌍 Reading reverse geo info from reverse geo service{C_0}")
+            printh("🌍 Reading reverse geo info from reverse geo service")
 
             # it will be assumed the geo info was collected prior to calling this function
             image_geo_info_dict: Dict = _metadata.get(IMAGE_GEO_INFO, {})
             if len(image_geo_info_dict) == 0:
-                print(f"{C_W}🚨 [ImageOrganizer] the metadata segment image_geo_info is empty{C_0}")
+                printw("[ImageOrganizer] the metadata segment image_geo_info is empty")
                 return _metadata
 
             # read reverse info for all images and format a neat output
@@ -1047,7 +1072,7 @@ class ImageOrganizer:
         """Based on the metadata file, collect metadata for all images"""
         _path = self._path
         if self._metadata is None:
-            print(f"{C_E}🚨 No Metadata available, did you run merge_metadata ?{C_0}")
+            printe("No Metadata available, did you run merge_metadata ?")
             return
 
         _metadata = self._metadata
@@ -1055,7 +1080,7 @@ class ImageOrganizer:
         if not _metadata:
             _f_metadata_json = _path.joinpath(self._f_metadata)
             if not _f_metadata_json.is_file():
-                print(f"{C_E}🚨 Metadata File [{_f_metadata_json}] wasn't found {C_0}")
+                printe("Metadata File [{_f_metadata_json}] wasn't found ")
                 return
             _metadata = Persistence.read_json(_f_metadata_json)
         # get dict fields
@@ -1081,7 +1106,7 @@ class ImageOrganizer:
         _timezone = _metadata_osm.get("timezone", "Europe/Berlin")
         _gpx_sorter = None
 
-        print(f"{C_T}### Collecting Image Metadata in path {C_F}[{str(_path)}]{C_0}")
+        printt(f"### Collecting Image Metadata in path {C_F}[{str(_path)}]")
         if _has_osm_latlon:
             print(f"{C_H}    🎯 OSM Fallback: {_osm_latlon}, {_osm_geo_info}{C_0}")
         if _has_gps_track:
@@ -1101,7 +1126,7 @@ class ImageOrganizer:
             f_osm = Path(_metadata_osm["file"]).name
 
         # now get all gps corrdinates
-        print(f"{C_T}### Processing Images {C_F}[{str(_path)}]{C_0}")
+        printt(f"### Processing Images {C_F}[{str(_path)}]")
         for _f_img, _img_meta in _metadata_exif.items():
             img_geo: Dict = None
 
@@ -1151,7 +1176,7 @@ class ImageOrganizer:
     def _collect_metadata_by_image(self) -> Optional[dict]:
         """gets all available metadata by file based on merged metadata.json"""
         if self._metadata is None:
-            print(f"{C_E}🚨 No Metadata available, did you run merge_metadata ?{C_0}")
+            printe("No Metadata available, did you run merge_metadata ?")
             return
         metadata_exif: dict = self._metadata.get(METADATA_EXIF, {})
         # reverse geo from exiftool
@@ -1161,6 +1186,8 @@ class ImageOrganizer:
 
         # also try to get the gps track entry if existent
         gps_track: Optional[dict] = self._metadata.get(GPS_TRACK, {}).get(TRACK)
+        num_gps = len(gps_track) if isinstance(gps_track, dict) else 0
+        printd(f"[ImageOrganizer] Number of GPS Entries {C_F}[{num_gps}]")
 
         out = {}
         for filename, exifmeta in metadata_exif.items():
@@ -1181,14 +1208,13 @@ class ImageOrganizer:
             if gps_track is not None:
                 timestamp: Optional[int] = None
                 # try to get timestamp from reverse geo
-                if isinstance(image_reverse_geo_info, dict):
-                    timestamp = image_reverse_geo_info.get("extra", {}).get("timestamp_utc")
+                if isinstance(_image_reverse_geo_info, dict):
+                    timestamp = _image_reverse_geo_info.get("extra", {}).get("timestamp_utc")
                 # try to get from exiftool reverse geo api
-                elif isinstance(image_geo_info, dict):
-                    timestamp = image_geo_info.get("gps_info", {}).get("timestamp_gps")
+                elif isinstance(_image_geo_info, dict):
+                    timestamp = _image_geo_info.get("gps_info", {}).get("timestamp_gps")
                 if timestamp is not None:
                     out[filename][GPS_TRACK] = gps_track.get(str(timestamp))
-
         return out
 
     def _prepare_exiftool_import(self) -> List[Dict]:
@@ -1196,20 +1222,102 @@ class ImageOrganizer:
         for changing EXIF Metadata using Exiftool"""
         out = []
         _f_exiftool_import = self._f_exiftool_import
-        # TODO IMPLEMENT
+        # TODO 🚨 PRIO1 IMPLEMENT MAPPING
         # self._metadata contains all updsated segemetns so far so we only have to collect everything for each image
         # Persistence.save_json("hugo_tmp.json", self._metadata)
         #  self._metadata [CONFIG_F_EXIFTOOL_IMPORT][FILES]
-        print("HUGO")
+        # print("HUGO")
+        # _gps_track = self._metadata.get(GPS_TRACK, {})
+        # print("HUGO GPS TRACK ", len(_gps_track))
         _image_metadata = self._collect_metadata_by_image()
         _num_images = len(_image_metadata)
         print(f"{C_H}📷 [ImageOrganizer] Prepare Metadata Mapping for [{_num_images}] Images{C_0}")
         for _idx, (_filename, _img_metadata) in enumerate(_image_metadata.items()):
             Helper.show_progress(_idx, _num_images, "Mapped Images")
+            _filename: str = _img_metadata.get(FILENAME)
+            _file_path: str = _img_metadata.get(FILEPATH)
+            _datetime_created: Optional[DateTime] = _img_metadata.get(DATETIME)
+            _meta_dict: Optional[dict] = _img_metadata.get(METADATA_EXIF)
+            _gps_track: Optional[dict] = _img_metadata.get(GPS_TRACK)
+
+            # print("HUGO GPS ", json.dumps(_gps_track, indent=4))
+            # _gps_track: dict = _img_metadata.get(GPS_TRACK)
+            _image_geo_info: dict = _img_metadata.get(IMAGE_GEO_INFO)
+            _image_reverse_geo_info = _img_metadata.get(IMAGE_REVERSE_GEO_INFO)
+            print_json(_image_reverse_geo_info, f"HUGO {C_F}[{_filename}]", True, "DEBUG")
+
+            # TODO SET DEFAULT KEYWORDS
+            _camera_keywords: Optional[list[str]] = None
+            # TODO SET THIS PARAMETER FROM ARGPARSE
+            _map_exif2keywords: bool = True
+
+            _transformer = GeoMetaTransformer(
+                _filename,
+                _meta_dict,
+                _image_geo_info,
+                _image_reverse_geo_info,
+                _gps_track,
+                _file_path,
+                _datetime_created,
+                _camera_keywords,
+                _map_exif2keywords,
+            )
+            _metadata_transformed = _transformer.transform()
+            # show transformed json in debug mode
+            print_json(_metadata_transformed, f"Transformed Metadata for File {C_F}[{_filename}]", True, "DEBUG")
+            # get the IPTC representation of the metadata / update the metadata file
+            _metadata_iptc = GeoMetaTransformer.get_iptc_metadata(_metadata_transformed)
+            print_json(_metadata_iptc, f"IPTC Metadata for File {C_F}[{_filename}]", True, "DEBUG")
+            _img_metadata[METADATA_EXIF][IPTC] = _metadata_iptc
+            # geo metadata entry if found
+            print_json(_gps_track, f"GPS GeoTrack Data for File {C_F}[{_filename}]", True, "DEBUG")
+            # print("HUGO ", list(_img_metadata[METADATA_EXIF].keys()))
+            # now collect all keywords
+
+            # TODO add a keyword mode: replace, update
+            _field_mapper = ExifToolFieldsMapper(_img_metadata[METADATA_EXIF])
+            _camera_keywords = _field_mapper.get_keywords()
+
+            #  {
+            #     "file": "fuji_test.jpg",
+            #     "author": "UNKNOWNN AUTHOR",
+            #     "authortitle": "Honorable",
+            #     "source": "own photography",
+            #     "copyright": "(C) Copyright 2025 UNKNOWNN AUTHOR ",
+            #     "rights": "(C) 2025 ALL RIGHTS RESERVED",
+            #     "description": "Weiherstraße, Bahnbrücken, Kraichtal, Landkreis Karlsruhe, Baden-Württemberg, 76703, Deutschland",
+            #     "iptc_category": "NT1",
+            #     "date_created": "2025-08-31 14:34:46",
+            #     "urgency": 6,
+            #     "rating": 3,
+            #     "genre": "leisure photography",
+            #     "original_transmission_ref": "Own Photography (2025-08-31 14:34:46)",
+            #     "datetime": "2025-08-31 14:34:46",
+            #     "lat": 49.119324,
+            #     "lon": 8.79133,
+            #     "lat_orientation": "N",
+            #     "lon_orientation": "E",
+            #     "elevation": 242.0,
+            #     "elevation_ref": 1,
+            #     "geo_url": "https://www.openstreetmap.org/#map=18/49.119324/8.79133",
+            #     "country": "Deutschland",
+            #     "country_code": "de",
+            #     "state": "Baden-Württemberg",
+            #     "zip_code": "76703",
+            #     "subregion": "Kraichtal",
+            #     "location": "Bahnbrücken"
+
+            print_json({"keywords": _camera_keywords}, f"Keywords for File {C_F}[{_filename}]", True, "DEBUG")
+
+            # _transformer = GeoMetaTransformer()
+            # now map the nested metadata into a plain json file to be used for exiftool metadata update
+            # _field_mapper = ExifToolFieldsMapper(_img_metadata)
+            # based on mapped metadata, create keywords
+
             # _geo_meta_transformer(file)
             pass
 
-        # print(f"{C_H}🌍 Reading reverse geo info from reverse geo service{C_0}")
+        # print(f"{C_H}🌍 Reading reverse geo info from reverse geo service")
 
         return out
 
@@ -1220,7 +1328,7 @@ class ImageOrganizer:
         if present
         """
         _path = self._path
-        print(f"\n{C_T}### Merge Image Metadata in {C_F}[{_path}]{C_0}")
+        printt(f"\n### Merge Image Metadata in {C_F}[{_path}]")
 
         config_metadata = deepcopy(CONFIG_METADATA)
 
@@ -1262,18 +1370,18 @@ class ImageOrganizer:
             f_env = _path.joinpath(env_ref)
             # print(f_env)
             if not f_env.is_file():
-                print(f"{C_W}🚨 Refered reference {C_H}[{env_ref}] {C_F}[{f_env}] is not a file{C_0}")
+                printw(f"Refered reference {C_H}[{env_ref}] {C_F}[{f_env}] is not a file")
                 continue
             env_file_ref = None
             try:
                 env_file_ref = Persistence.read_txt_file(f_env)[0].strip()
             except (IndexError, KeyError):
-                print(f"{C_E}🚨 No valid fileref found / empty file {C_F}[{f_env}]{C_0}")
+                printe("No valid fileref found / empty file {C_F}[{f_env}]")
                 continue
             if not os.path.isfile(env_file_ref):
                 continue
             # assign value to target
-            print(f"{C_H}Assigned [{file_ref}]: {C_F}[{env_file_ref}]{C_0}")
+            printh(f"Assigned [{file_ref}]: {C_F}[{env_file_ref}]")
             files[file_ref] = os.path.abspath(env_file_ref)
 
         # create the file refs for files with hardcoded names
@@ -1282,7 +1390,7 @@ class ImageOrganizer:
             if not f_env.is_file():
                 continue
             files[file_ref] = f_env
-            print(f"{C_H}Assigned [{file_ref}]: {C_F}[{f_env}]{C_0}")
+            printh(f"Assigned [{file_ref}]: {C_F}[{f_env}]")
 
         # reeading values
         # create the file references
@@ -1296,11 +1404,11 @@ class ImageOrganizer:
             try:
                 value = Persistence.read_txt_file(f_env)[0].strip()
             except (IndexError, KeyError):
-                print(f"{C_E}🚨 Couldn't read file ref {C_F}[{f_env}]{C_0}")
+                printe("Couldn't read file ref {C_F}[{f_env}]")
                 continue
             if value is None:
                 continue
-            print(f"{C_H}Assigning [{file_ref}] from [{env_ref}]: {C_F}[{value}]{C_0}")
+            printh(f"Assigning [{file_ref}] from [{env_ref}]: {C_F}[{value}]")
             offset[file_ref] = value
 
         # now directly copy contents
@@ -1411,7 +1519,7 @@ class ImageOrganizer:
 
     #     f_gpx_merged = f_gpx_merged if f_gpx_merged.is_file() else None
     #     if f_gpx_merged is None:
-    #         print(f"{C_H}No gpx file {f_gpx_merged} found, skip processing of creating gps based on gpx{C_0}")
+    #         printh(f"No gpx file {f_gpx_merged} found, skip processing of creating gps based on gpx")
     #         return
 
     #     # get the geosync offset (previously written), with a default of 00:00:00
@@ -1438,7 +1546,7 @@ class ImageOrganizer:
         - Extract lat lon default from OSM links => F_LAT_LON_ENV
         """
 
-        print(f"{C_T}### ImageOrganizer: prepare_collateral_files")
+        printt("### ImageOrganizer: prepare_collateral_files")
         # 0. Delete any temporary files
         self.cleanup_env_files(delete_generated_files=True)
 
@@ -1449,7 +1557,7 @@ class ImageOrganizer:
         # Exporting all metadata in a path into a json f_metadata_exif (metadata_exif.json)
         # runs: exiftool -r -g -c %.6f -progress 50 -json -<extensions> ...
         cmd_export_metadata = self._exiftool.cmd_export_meta()
-        print(f"{C_H}    Create Metadata: {C_PY}[{cmd_export_metadata}]{C_0}")
+        printh(f"    Create Metadata: {C_PY}[{cmd_export_metadata}]")
         f_metadata_exif = self._path.joinpath(f_metadata_exif)
         exif_metadata_created = CmdRunner.run_cmd_and_stream(cmd_export_metadata, f_metadata_exif)
         if exif_metadata_created:
@@ -1459,7 +1567,7 @@ class ImageOrganizer:
         f_gpx = GeoLocation.merge_gpx(self._path, self._f_gpx_merged)
         gpx_file_created = False if f_gpx is None else True
         if gpx_file_created:
-            print(f"{C_H}Merged GPX : {C_F}[{f_gpx}]{C_0}")
+            printh(f"Merged GPX : {C_F}[{f_gpx}]")
             # store the file name of the merged gpx into an env file
             Persistence.save_txt(self._path.joinpath(F_GPX_MERGED_ENV), str(self._path.joinpath(f_gpx_merged)))
 
@@ -1467,14 +1575,12 @@ class ImageOrganizer:
         timstamp_dict_camera: Dict = self.extract_image_timestamp()
         timestamp_camera_extracted = True if len(timstamp_dict_camera) > 0 else False
         if timestamp_camera_extracted:
-            print(f"{C_H}Image timestamp: {C_PY}[{timstamp_dict_camera.get('original', 'NA')}]{C_0}")
-        else:
-            print(f"{C_W}No image timestamp extracted{C_0}")
+            printh(f"Image timestamp: {C_PY}[{timstamp_dict_camera.get('original', 'NA')}]")
 
         # 4. Now Get the GPS Timestamp (as seen on the image of the previous image)
         #    Writes: offset.env, offset_sec.env, timestamp_gps.json, timestamp_camera.json
         time_offset = self.calculate_time_offset()
-        print(f"{C_H}Image Offset: {C_PY}[{time_offset}]{C_0}")
+        printh(f"Image Offset: {C_PY}[{time_offset}]")
 
         # 4. Extract the OSM Link as default GPS Coordinates
         #   writes an existing of the existing openstreetmap.org links => osm.json,
@@ -1482,13 +1588,13 @@ class ImageOrganizer:
         lat_lon = GeoLocation.get_openstreetmap_coordinates_from_folder(f_osm_info, self._path)
         lat_lon_extracted = False if lat_lon is None else True
         if lat_lon_extracted:
-            print(f"{C_H}    LatLon from OSM: {C_PY}[{str(lat_lon)}]{C_0}")
+            printh(f"    LatLon from OSM: {C_PY}[{str(lat_lon)}]")
             Persistence.save_txt(self._path.joinpath(F_OSM_ENV), str(self._path.joinpath(f_osm_info)))
 
         # 5. create a dict with all geo info metadata from osm link
         # - will be either created from reverse geo or from exiftool geolocation API
         # Create a metadata json containing everything
-        print(f"{C_H}    Processing Metadata{C_0}")
+        printh("    Processing Metadata")
         # Will populate segments and refer single files
         # f_metadata
         # f_metadata_exif
@@ -1512,7 +1618,7 @@ class ImageOrganizer:
         gps_metadata = self.process_geo_metadata()
         gps_metadata_extracted = False if gps_metadata is None else True
         if gps_metadata_extracted:
-            print(f"{C_H}    🌍 Processed GPS Metadata{C_0}")
+            printh("    🌍 Processed GPS Metadata")
 
         # 8. use_reverse_geo if activated
         _metadata = self.process_reverse_geo_metadata(overwrite=self._overwrite_reverse_geo)
@@ -1550,29 +1656,31 @@ class ImageOrganizer:
                 # note: is case sensitive
                 jpg_files = list(p.glob("*.jpg"))
                 if not jpg_files:
-                    print(f"{C_E}🚨 No JPG files found in current directory.{C_0}")
+                    printe("No JPG files found in current directory.")
                     return {}
-                print(f"{C_T}Select an image file to extract timestamp:{C_0}")
+                printt("Select an image file to extract timestamp:")
                 for idx, file in enumerate(jpg_files):
                     print(f"{C_I}[{idx}] {C_P}{file.name}{C_0}")
                 try:
-                    choice = int(input(f"{C_Q}Enter number of file to use: {C_0}").strip())
+                    choice = int(inputc("Enter number of file to use").strip())
                     f = jpg_files[choice]
                 except (ValueError, IndexError):
-                    print(f"{C_E}🚨 Invalid selection.{C_0}")
+                    printe("Invalid selection.")
                     return {}
 
         if not f.exists():
-            print(f"{C_E}🚨 File not found: {self._path}{C_0}")
+            printe("File not found: {self._path}")
             return {}
 
         # save the timestamp image file to an env file
         Persistence.save_txt(p / F_TIMESTAMP_IMG_ENV, str(f))
 
         # Step 2: Run exiftool extracting Original DateTime Original
+
         timestamp_camera = self._exiftool.get_original_datetime(f)
 
         if timestamp_camera is None:
+            printi(f"No GPS timestamp info created in Path {C_F}{str(f)}")
             return {}
 
         # Step 3: Capture output manually (if needed, could be redirected or parsed differently)
@@ -1580,7 +1688,7 @@ class ImageOrganizer:
         output = ImageOrganizer.generate_timestamp_dict(timestamp_camera, f)
         f_timestamp_camera = f.parent / F_TIMESTAMP_CAMERA
         Persistence.save_json(f_timestamp_camera, output)
-        print(f"{C_H}GPS timestamp saved to {C_P}{f_timestamp_camera}{C_0}")
+        printh(f"GPS timestamp saved to {C_P}{f_timestamp_camera}")
         return output
 
     @staticmethod
@@ -1610,9 +1718,9 @@ class ImageOrganizer:
         timeline[gps_pos] = "🟦"  # GPS
         timeline[cam_pos] = "🟥"  # Camera
 
-        print(f"\n{C_T}Mini Timeline:{C_0}")
-        print(f"{C_PY}GPS 🟦{' ' * (gps_pos)}|{' ' * (cam_pos - gps_pos - 1)}🟥 Camera{C_0}")
-        print(f"{C_H}{''.join(timeline)}{C_0}")
+        printt("\nMini Timeline:")
+        printpy("GPS 🟦{' ' * (gps_pos)}|{' ' * (cam_pos - gps_pos - 1)}🟥 Camera")
+        printh(f"{''.join(timeline)}")
         print(f"{C_B}Offset: {offset_sec:.3f} seconds{C_0}\n")
 
     @staticmethod
@@ -1620,10 +1728,10 @@ class ImageOrganizer:
         """opens the camera image for display"""
         # read the file path
         if not f_image.is_file():
-            print(f"{C_E}🚨 Can't open file [{f_image}]{C_0}")
+            printe("Can't open file [{f_image}]")
             return
         p_cwd = Path.cwd()
-        print(f"\n{C_T}### Opening File in default image program: {C_F}[{f_image}]{C_0}")
+        printt(f"\n### Opening File in default image program: {C_F}[{f_image}]")
         os.chdir(f_image.parent)
         # open the image in the default viewer
         # the cmd command doesn't work here
@@ -1641,7 +1749,7 @@ class ImageOrganizer:
         for f_name in delete_files:
             f_del = self._path.joinpath(f_name)
             if f_del.is_file():
-                print(f"{C_PY}🚮 Deleting {C_F}[{f_del}]{C_0}")
+                printpy(f"🚮 Deleting {C_F}[{f_del}]")
                 f_del.unlink(missing_ok=True)
 
         # delete env files with no ref to opther files
@@ -1653,11 +1761,11 @@ class ImageOrganizer:
                 try:
                     f_del = Persistence.read_txt_file(f_env)[0].strip()
                     if os.path.isfile(f_del):
-                        print(f"{C_PY}🚮 Deleting Generated {C_F}[{f_del}]{C_0}")
+                        printpy(f"🚮 Deleting Generated {C_F}[{f_del}]")
                         os.remove(f_del)
                 except IndexError:
                     pass
-            print(f"{C_PY}🚮 Deleting {C_F}[{f_env}]{C_0}")
+            printpy(f"🚮 Deleting {C_F}[{f_env}]")
             # f_env.unlink(missing_ok=True)
 
     def calculate_time_offset(self) -> str:
@@ -1691,14 +1799,14 @@ class ImageOrganizer:
         if offset_file.exists():
             try:
                 offset_file.unlink()
-                print(f"{C_PY}Deleted existing {offset_file}{C_0}")
+                printpy("Deleted existing {offset_file}")
             except Exception as e:
-                print(f"{C_E}🚨 Failed to delete {offset_file}: {e}{C_0}")
+                printe(f"Failed to delete {offset_file}: {e}")
 
         # Step 2: Load or generate timestamps
-        camera_data = Persistence.read_json(camera_json_file) if camera_json_file.exists() else {}
-        # recreate the datetime
-        if camera_data:
+        camera_data: dict = Persistence.read_json(camera_json_file) if camera_json_file.exists() else {}
+        # recreate the datetime for the reference image
+        if len(camera_data) > 0:
             timestamp_camera = float(camera_data.get("timestamp", 0)) / 1000
             datetime_camera = DateTime.fromtimestamp(timestamp_camera)
             camera_data["datetime"] = datetime_camera
@@ -1712,18 +1820,21 @@ class ImageOrganizer:
             gps_data["datetime"] = datetime_gps
 
         if not camera_data:
-            print(f"{C_E}🚨 Missing TIMESTAMP_CAMERA.json. Offset will be set to zero.{C_0}")
+            printe("Missing TIMESTAMP_CAMERA.json. Offset will be set to zero.")
+            offset_sec = 0
+            offset_str = "+00:00:00"
+
         else:
             # create the date from camera
             if not gps_data:
-                print(f"{C_E}🚨 Missing TIMESTAMP_GPS.json. Please enter GPS time manually{C_0}")
+                printe("Missing TIMESTAMP_GPS.json. Please enter GPS time manually")
                 f_image = Path(camera_data.get("filename", "NA"))
                 if f_image.is_file and self._show_gps_image:
-                    print(f"{C_H}Show Image [{f_image}]{C_0}")
+                    printh(f"Show Image [{f_image}]")
                     ImageOrganizer.show_image(f_image)
 
-                time_str = input(
-                    f"{C_Q}Enter GPS time [hh:mm:ss] (blank to skip) {C_I}[CAMERA {datetime_camera.strftime('%H:%M:%S')}]: {C_0}"
+                time_str = inputc(
+                    f"Enter GPS time [hh:mm:ss] (blank to skip) {C_I}[CAMERA {datetime_camera.strftime('%H:%M:%S')}]"
                 ).strip()
                 try:
                     parts = [int(p) for p in time_str.split(":")]
@@ -1751,7 +1862,7 @@ class ImageOrganizer:
                     gps_data["filename"] = camera_data["filename"]  # preserve user input
 
                 except Exception as _:
-                    print(f"{C_E}🚨 No GPS Time found, will copy camera timestamps{C_0}")
+                    printe("No GPS Time found, will copy camera timestamps")
                     # copy the camera data as offset data of gps
                     gps_data = camera_data.copy()
                     offset_ms = 0
@@ -1771,24 +1882,26 @@ class ImageOrganizer:
                 c_offset = f"{C_E}🚨 "
                 offset_str2 = f"{C_E}🚨 {offset_str2}"
 
-            print(f"\n{C_T}### Camera Times and Offset: {C_H}T(GPS) + T(OFFSET) = T(CAMERA){C_0}")
+            printt(f"### Camera Times and Offset: {C_H}T(GPS) + T(OFFSET) = T(CAMERA)")
             print(f"{C_W}📷 Camera Time: {camera_data.get('original', 'N/A')}{C_0}")
             print(f"{C_I}🛰️ GPS Time   : {gps_data.get('original', 'N/A')}{C_0}")
             print(f"{c_offset}⌚ Offset (s) : {offset_sec}sec / {offset_str2}{C_0}")
-            print(f"{C_H}🛰️+⌚=📷      : {C_I}{dt_gps_str}{offset_str2}{C_T}={C_W}{dt_cam_str}{C_0}\n")
+            printh(f"🛰️+⌚=📷      : {C_I}{dt_gps_str}{offset_str2}{C_T}={C_W}{dt_cam_str}{C_0}\n")
 
             # render_mini_timeline(gps_ts, cam_ts)
 
         # Step 4: Save all outputs
-        Persistence.save_json(camera_json_file, camera_data)
-        Persistence.save_json(gps_json_file, gps_data)
-        Persistence.save_txt(offset_file, offset_str)
-        Persistence.save_txt(offset_file_sec, str(offset_sec))
 
-        print(f"\n{C_H}Saved camera timestamp to {C_P}{camera_json_file}{C_0}")
-        print(f"{C_H}Saved GPS timestamp to {C_P}{gps_json_file}{C_0}")
-        print(f"{C_H}Saved offset [{offset_str}] to {C_P}{offset_file}{C_0}")
-        print(f"{C_H}Saved offset sec [{offset_sec}] to {C_P}{offset_file_sec}{C_0}")
+        Persistence.save_json(camera_json_file, camera_data)
+        printh(f"\nSaved camera timestamp to {C_P}{camera_json_file}")
+
+        Persistence.save_json(gps_json_file, gps_data)
+        printh(f"Saved GPS timestamp to {C_P}{gps_json_file}")
+        # saving the offset in seconds
+        Persistence.save_txt(offset_file, offset_str)
+        printh(f"Saved offset [{offset_str}] to {C_P}{offset_file}")
+        Persistence.save_txt(offset_file_sec, str(offset_sec))
+        printh(f"Saved offset sec [{offset_sec}] to {C_P}{offset_file_sec}")
         return offset_str
 
     @staticmethod
@@ -1836,7 +1949,7 @@ class ImageOrganizer:
     #     # read the geosync offset
 
     #     geosync = ExifTool(p_source).read_geosync_from_env()
-    #     print(f"{C_T}### Using GPS Track {C_F}[{f_track}] (Offset {geosync}){C_0}")
+    #     printt(f"### Using GPS Track {C_F}[{f_track}] (Offset {geosync})")
 
     #     # exiftool -geosync=+00:00:00 -geotag track.gpx *.jpg
     #     os.chdir(p_cwd)
@@ -1864,10 +1977,10 @@ class ImageOrganizer:
 
     #     cmd_output = CmdRunner.run_cmd_and_stream(cmd, output_path)
     #     if cmd_output:
-    #         print(f"{C_H}Metadata successfully saved  {C_P}{output_path}{C_0}")
+    #         print(f"{C_H}Metadata successfully saved  {C_P}{output_path}")
     #         Persistence.save_txt(p_source / F_METADATA_EXIF_ENV, output_path)
     #     else:
-    #         print(f"{C_E}🚨 Exiftool failed for command [{p_source}{C_0}]")
+    #         printe("Exiftool failed for command [{p_source}{C_0}]")
 
     # @staticmethod
     # def get_unprocessed_files(
@@ -1968,13 +2081,13 @@ class ImageOrganizer:
     #     child_folders = [f for f in p_root.iterdir() if f.is_dir()]
     #     summary = []
 
-    #     print(f"\n{C_T}### Updating metadata.json in {len(child_folders)} subfolders...{C_0}")
+    #     print(f"\n{C_T}### Updating metadata.json in {len(child_folders)} subfolders...")
     #     for folder in child_folders:
     #         metadata_path = folder / f_metadata_exif
     #         files = list(folder.glob("*.*"))
     #         file_count = len(files)
 
-    #         print(f"\n{C_H}Running exiftool in: {C_P}{folder}{C_0}")
+    #         print(f"\n{C_H}Running exiftool in: {C_P}{folder}")
     #         # CMD_EXIFTOOL_EXPORT_METADATA = [CMD_EXIFTOOL, "-r", "-g", "-c", "'%.6f'", "-progress50", "-json"] + SUFFIX_ARGS
     #  cmd = self._exiftool.cmd_export_meta()
     #         cmd = ImageOrganizer.get_exiftool_cmd_export_meta(folder)
@@ -1986,11 +2099,11 @@ class ImageOrganizer:
     #         # save the env file
     #         Persistence.save_txt(folder / F_METADATA_EXIF_ENV, metadata_path)
 
-    #     print(f"\n{C_T}### Metadata Update Summary:{C_0}")
+    #     print(f"\n{C_T}### Metadata Update Summary:")
     #     for idx, entry in enumerate(summary):
     #         print(
     #             f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}{entry['folder']}{C_H}: "
-    #             f"{C_B}{entry['file_count']} files, {entry['status']}{C_0}"
+    #             f"{C_B}{entry['file_count']} files, {entry['status']}"
     #         )
 
     @staticmethod
@@ -2049,16 +2162,16 @@ class ImageOrganizer:
         _output_root = Path.cwd() if output_root is None else output_root
 
         if _output_root.is_dir() is False:
-            print(f"{C_E}🚨 [ImageOrganizer] Invalid output folder [{_output_root}]{C_0}")
+            printe("[ImageOrganizer] Invalid output folder [{_output_root}]")
             return
 
         # get exiftool instance
         exiftool = self.exiftool
         if exiftool is None:
-            print(f"{C_E}🚨 [ImageOrganizer] move_files_by_date Exiftool was not instanciated{C_0}")
+            printe("[ImageOrganizer] move_files_by_date Exiftool was not instanciated")
             return
 
-        print(f"{C_T}### 🔀[ImageOrganizer] Move Files .... ")
+        printt("### 🔀[ImageOrganizer] Move Files .... ")
 
         _input_folder = self._path
         _output_root = _output_root.absolute()
@@ -2138,7 +2251,7 @@ class ImageOrganizer:
         # Determine input folder
         p_source = args.p_source
         if p_source is None:
-            inp = input(f"{C_Q}Enter input folder path (default current folder): {C_0}").strip()
+            inp = inputc("Enter input folder path (default current folder)").strip()
             if inp:
                 p_source = Path(inp)
             else:
@@ -2147,7 +2260,7 @@ class ImageOrganizer:
             p_source = Path(p_source)
 
         if not p_source.exists() or not p_source.is_dir():
-            print(f"{C_E}🚨 Input folder {p_source} not found or invalid.{C_0}")
+            printe("Input folder {p_source} not found or invalid.")
             return None
 
         return p_source
@@ -2158,7 +2271,7 @@ class ImageOrganizer:
         # Determine input folder
         p_output = args.p_output
         if p_output is None:
-            outp = input(f"{C_Q}Enter output folder path (default current folder): {C_0}").strip()
+            outp = inputc("Enter output folder path (default current folder)").strip()
             if outp:
                 p_output = Path(outp)
             else:
@@ -2167,7 +2280,7 @@ class ImageOrganizer:
             p_output = Path(p_output)
 
         if not p_output.exists() or not p_output.is_dir():
-            print(f"{C_E}🚨 Input folder {p_output} not found or invalid.{C_0}")
+            printe("Input folder {p_output} not found or invalid.")
             return None
 
         return p_output
@@ -2360,7 +2473,7 @@ class ImageOrganizer:
         # Path(args.p_source).absolute()
         p_to = Path(p_to).absolute()
         p_image_folders = self.move_files_by_date(p_to)
-        print(f"{C_H}📂 [ImageOrganizer] Created [{len(p_image_folders)}] Paths{C_0}")
+        printh(f"📂 [ImageOrganizer] Created [{len(p_image_folders)}] Paths")
         p_image_folders = None if len(p_image_folders) == 0 else p_image_folders
         return p_image_folders
 
@@ -2404,14 +2517,14 @@ class ImageOrganizer:
     #     p_root = args.p_source
     #     if p_root is None:
     #         outp = input(
-    #             f"{C_Q}Enter source root folder path for update (default {P_PHOTO_OUTPUT_ROOT}): {C_0}"
+    #             f"{C_Q}Enter source root folder path for update (default {P_PHOTO_OUTPUT_ROOT}): "
     #         ).strip()
     #         p_root = Path(outp) if outp else P_PHOTO_OUTPUT_ROOT
     #     else:
     #         p_root = Path(p_root)
 
     #     if not p_root.exists() or not p_root.is_dir():
-    #         print(f"{C_E}🚨 Output folder {p_root} not found or invalid.{C_0}")
+    #         printe("Output folder {p_root} not found or invalid.")
     #         return False
     #     ImageOrganizer.update_metadata_recursive(p_root)
     #     return True
@@ -2425,6 +2538,10 @@ def main() -> None:
 
     Interactively prompts for inputs if no arguments are specified.
     """
+
+    # TODO ADD printlevekl to parseargs
+    set_print_level("DEBUG", show_emoji=True)
+
     parser = ImageOrganizer.build_arg_parser()
     args = parser.parse_args()
     # set defaults
@@ -2432,9 +2549,7 @@ def main() -> None:
     # args_dict: dict = vars(args)
 
     if args.action_show_args:
-        print(f"{C_T}### Argparser Settings{C_PY}")
-        print(json.dumps(vars(args), indent=4))
-        print(C_0)
+        print_json(vars(args), "ARGPARSER SETTINGS")
 
     # create the Image organizer
     image_organizer: ImageOrganizer = ImageOrganizer.create_image_organizer(args)
@@ -2471,7 +2586,7 @@ def main() -> None:
     # Determine output root folder
     # output_root = args.output
     # if output_root is None:
-    #     outp = input(f"{C_Q}Enter output root folder path (default {P_PHOTOS_TRANSIENT_DEFAULT}): {C_0}").strip()
+    #     outp = input(f"{C_Q}Enter output root folder path (default {P_PHOTOS_TRANSIENT_DEFAULT}): ").strip()
     #     if outp:
     #         output_root = Path(outp)
     #     else:
@@ -2486,31 +2601,31 @@ def main() -> None:
 
     # metadata_path = input_folder / F_METADATA_EXIF
     # if not metadata_path.exists():
-    #     print(f"{C_E}🚨 Metadata file not found. Exiftool may have failed.{C_0}")
+    #     printe("Metadata file not found. Exiftool may have failed.")
     #     return
 
     # # Process metadata.json
     # file_dict = process_metadata_json(metadata_path)
     # save_processed_dict(file_dict, input_folder / "file_dump.json")
-    # print(f"{C_PY}Processed metadata saved as file_dump.json in input folder.{C_0}")
+    # printpy("Processed metadata saved as file_dump.json in input folder.")
 
     # # Move files by date
     # errors = move_files_by_date(input_folder, output_root, file_dict)
 
     # if errors:
-    #     print(f"{C_E}🚨 The following files could not be moved:{C_0}")
+    #     printe("The following files could not be moved:")
     #     for efile in errors:
-    #         print(f"{C_E}🚨  - {efile}{C_0}")
+    #         printe(" - {efile}")
     # else:
-    #     print(f"{C_PY}All files moved successfully.{C_0}")
+    #     printpy("All files moved successfully.")
 
     # # Summarize folders and update metadata.json in each dated folder
     # date_list = list(set(entry["date"] for entry in file_dict.values()))
     # summary = summarize_and_update_metadata(output_root, date_list)
-    # print(f"\n{C_T}### Summary of moved files per date (in {output_root} ):{C_0}")
+    # print(f"\n{C_T}### Summary of moved files per date (in {output_root} ):")
     # for idx, entry in enumerate(summary):
     #     print(
-    #         f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}[{entry['date']}]{C_H}, Files moved:{C_B} {entry['file_count']}{C_0}"
+    #         f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}[{entry['date']}]{C_H}, Files moved:{C_B} {entry['file_count']}"
     #     )
 
 

@@ -12,16 +12,25 @@ exiftool -json -g -c '%.6f' *.jpg > makernotes.json
 """
 
 import os
+import json
+
 from typing import Any, Optional, Tuple, Literal
 from datetime import datetime as DateTime
-import json
-from libs.geo import Geo
+from libs.geo import Geo, HEARTRATE, TEMPERATURE, ELEVATION, DATETIME
 from libs.helper import Persistence
+
+# custom print commands / note that MY_ENV_PRINT_SHOW_EMOJI and MY_ENV_PRINT_SHOW_EMOJI
+# need to be set accordingly in environment to reflect certain debug levels
+from libs.custom_print import (
+    printe,
+    printw,
+)
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
+
 
 # get some properties from the environment / define it in the setenv.bat or a bash
 # initialization script respectively. Use the template in /templates/myenv_template.bat
-EXIFTOOL_AUTHOR = os.environ.get("MY_EXIFTOOL_AUTHOR", "UNKNWON AUTHOR")
+EXIFTOOL_AUTHOR = os.environ.get("MY_EXIFTOOL_AUTHOR", "UNKNOWNN AUTHOR")
 EXIFTOOL_BYLINE_TITLE = os.environ.get("MY_EXIFTOOL_AUTHORTITLE", "Honorable")
 
 # this is the expected sample json based on exiftool reverse geo API
@@ -231,7 +240,7 @@ SAMPLE_METADATA_EXIFTOOL_TAGS = [
         "Headline": "hugoheadline IPTC",  # MAPPED
         "SpecialInstructions": "HugoSpecialInstructions IPTC",  # MAPPED
         # IRFAN KEYWORDS TAB
-        "Keywords": ["hugo1 IPTC", "hugo2"],  # TODO
+        "Keywords": ["hugo1 IPTC", "hugo2"],
         "Category": "XYZ",  # only three letters # MAPPED to NT1
         "SupplementalCategories": ["hugo sup1 iptc"],  # NOT SUPPLIED
         "Urgency": 6,  # MAPPED To 6
@@ -356,6 +365,33 @@ EXIFTOOL_MAP = {
 }
 
 
+# map to export to IPTC Fields
+METADATA_IPTC_MAP = {
+    "CodedCharacterSet": None,  # TODO MAP THIS AS WELL
+    "EnvelopeRecordVersion": None,
+    "Caption-Abstract": DESCRIPTION,
+    "Writer-Editor": AUTHOR,
+    "Headline": DESCRIPTION,
+    "SpecialInstructions": GEO_URL,
+    "By-line": AUTHOR,
+    "By-lineTitle": AUTHORTITLE,
+    "Credit": COPYRIGHT,
+    "Source": SOURCE,
+    "ObjectName": LOCATION,
+    "DateCreated": DATE_CREATED,
+    "City": CITY,
+    "Sub-location": LOCATION,
+    "Province-State": STATE,
+    "Country-PrimaryLocationName": COUNTRY,
+    "OriginalTransmissionReference": ORIGINAL_TRANSMISSION_REF,
+    "Category": IPTC_CATEGORY,
+    "SupplementalCategories": None,
+    "Urgency": URGENCY,
+    "Keywords": KEYWORDS,
+    "CopyrightNotice": COPYRIGHT,
+}
+
+
 class GeoMetaTransformer:
     """class to transform geo data"""
 
@@ -373,7 +409,7 @@ class GeoMetaTransformer:
     ):
         """Constructor"""
         if not isinstance(meta_dict, dict):
-            print(f"{C_E}🚨[GeoTransformer] No Metadata transfered for file {C_F}[{filename}]{C_0}")
+            printe(f"[GeoTransformer] No Metadata transfered for file {C_F}[{filename}]")
             return
 
         # filename
@@ -385,11 +421,98 @@ class GeoMetaTransformer:
         self._meta_makernotes: dict = meta_dict.get("MakerNotes", {})
 
         # geo info as retrieved from exiftool reverse geo
+        # get the geo reverse
+        #  {
+        #     "geotrack_origin": "gpx",
+        #     "metadata_geo": {
+        #         "idx": 1,
+        #         "file": "C:/Users/Henrik/Desktop/gps_test_files/test_single/gps.jpg",
+        #         "lat_lon": [
+        #             49.119324,
+        #             8.79133
+        #         ],
+        #         "geo_reverse": {
+        #             "GeolocationCity": "Zaisenhausen",
+        #             "GeolocationRegion": "Baden-Württemberg",
+        #             "GeolocationSubregion": "Regierungsbezirk Karlsruhe",
+        #             "GeolocationCountryCode": "DE",
+        #             "GeolocationCountry": "Bundesrepublik Deutschland",
+        #             "GeolocationTimeZone": "Europe/Berlin",
+        #             "GeolocationFeatureCode": "PPLA4",
+        #             "GeolocationFeatureType": "Seat of a Fourth-order Administrative Division",
+        #             "GeolocationPopulation": 1800,
+        #             "GeolocationPosition": "49.1067, 8.8128",
+        #             "GeolocationDistance": "2.10 km",
+        #             "GeolocationBearing": 121
+        #         },
+        #         "geo_info": "2.10 km, 121° to Zaisenhausen/Regierungsbezirk Karlsruhe/Baden-Württemberg",
+        #         "time_zone": "Europe/Berlin"
+        #     },
+        #     "gps_info": {
+        #         "datetime_camera_exif": "2025:08:31 16:34:46.22+02:00",
+        #         "offset": 0,
+        #         "datetime_camera_utc": "2025-08-31T14:34:46.220000+00:00",
+        #         "datetime_gps_utc": "2025-08-31T14:34:47+00:00",
+        #         "timestamp_camera": 1756650886220,
+        #         "timestamp_gps": 1756650887000,
+        #         "timestamp_diff": -0.78
+        #     }
+        # }
         self._image_geo_info: Optional[dict] = image_geo_info
+        self._image_geo_address: dict = (
+            {} if not isinstance(image_geo_info, dict) else image_geo_info.get("geo_reverse")
+        )
+
         # geo info as retrieved from reverse geo api
+        #  {
+        #     "place_id": 113798192,
+        #     "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        #     "osm_type": "way",
+        #     "osm_id": 31066248,
+        #     "lat": "49.1191423",
+        #     "lon": "8.7889975",
+        #     "category": "highway",
+        #     "type": "residential",
+        #     "place_rank": 26,
+        #     "importance": 0.05338669336995495,
+        #     "addresstype": "road",
+        #     "name": "Weiherstraße",
+        #     "display_name": "Weiherstraße, Bahnbrücken, Kraichtal, Landkreis Karlsruhe, Baden-Württemberg, 76703, Deutschland",
+        #     "address": {
+        #         "road": "Weiherstraße",
+        #         "suburb": "Bahnbrücken",
+        #         "village": "Bahnbrücken",
+        #         "municipality": "Kraichtal",
+        #         "county": "Landkreis Karlsruhe",
+        #         "state": "Baden-Württemberg",
+        #         "ISO3166-2-lvl4": "DE-BW",
+        #         "postcode": "76703",
+        #         "country": "Deutschland",
+        #         "country_code": "de"
+        #     },
+        #     "boundingbox": [
+        #         "49.1189961",
+        #         "49.1191423",
+        #         "8.7877008",
+        #         "8.7889975"
+        #     ],
+        #     "extra": {
+        #         "FileName": "xxx.jpg",
+        #         "timestamp_utc": 1756650887000,
+        #         "timezone": "Europe/Berlin",
+        #         "datetime": "2025:08:31 16:34:47",
+        #         "elevation": 241,
+        #         "heartrate": 136
+        #     }
+        # }
         self._image_reverse_geo_info: Optional[dict] = image_reverse_geo_info
+        self._image_reverse_geo_address: dict = (
+            {} if not isinstance(image_reverse_geo_info, dict) else image_reverse_geo_info.get("address")
+        )
+
         # gps_track entry
         self._gps_track: Optional[dict] = gps_track
+
         # authors
         self._author = EXIFTOOL_AUTHOR
         self._authortitle = EXIFTOOL_BYLINE_TITLE
@@ -401,13 +524,13 @@ class GeoMetaTransformer:
         self._keywords: Optional[list[str]] = keywords
         # fla: automatically map some of the exif data as keywords
         map_exif2keywords: bool = map_exif2keywords
-
         # flag if reverse geo metadata is from exiftool (true) or from nominatim (false)
         self._geo_metadata_type: Literal["exiftool", "georeverse_api", "undefined"] = "undefined"
-
+        self._address_segment: dict = {}
         self._meta_geo: dict = self._get_geo_meta()
         if self._geo_metadata_type == "undefined":
-            print(f"{C_W} No Proper Geo Metadata detected")
+            printe("[GeoMetaTransformer] No Proper Geo Metadata detected")
+
         # map standard EXIF darta to keywords automatically
         # TODO Implement
         self._map_exif2keywords: bool = map_exif2keywords
@@ -416,9 +539,11 @@ class GeoMetaTransformer:
         """gets the address metadata from meta dictionary depending on passed type"""
         if isinstance(self._image_reverse_geo_info, dict):
             self._geo_metadata_type = "georeverse_api"
+            self._address_segment = self._image_reverse_geo_info.get("address", {})
             return self._image_reverse_geo_info
         elif isinstance(self._image_geo_info, dict):
             self._geo_metadata_type = "exiftool"
+            self._address_segment = self._image_geo_info.get("geo_reverse", {})
             return self._image_geo_info
         return None
 
@@ -427,7 +552,7 @@ class GeoMetaTransformer:
         if self._geo_metadata_type == "exiftool":
             return self._meta_geo.get("display_name", "NO DISPLAY NAME")
         elif self._geo_metadata_type == "georeverse_api":
-            return self._meta_geo.get("metadata_geo", {}).get("geo_info", "NO DISPLAY NAME")
+            return self._meta_geo.get("display_name")
 
         return "NO DISPLAY NAME"
 
@@ -448,7 +573,7 @@ class GeoMetaTransformer:
             lat = float(lat)
             lon = float(lon)
         except (ValueError, IndexError):
-            print(f"{C_W}🚨[GeoTransformer] GPS Data No latlon information available {C_0}")
+            printw("[GeoTransformer] GPS Data No latlon information available ")
             return None
         # get altitude from gps data if present
         elevation = 0.0
@@ -467,31 +592,57 @@ class GeoMetaTransformer:
             lon = float(self._image_reverse_geo_info.get("lat"))
             ele = float(self._meta_dict.get("extra", {}).get("elevation", 0.0))
         except (ValueError, IndexError):
-            print(f"{C_E}🚨[GeoTransformer] GPS Data Conversion error {C_0}")
+            printe("[GeoTransformer] GPS Data Conversion error ")
             return None
         return (lat, lon, ele)
 
     def get_gps_data(self) -> Optional[Tuple[float, float, str, str, float]]:
-        """returns lat,lon,orientation lat lon,altitude geo data"""
+        """returns lat,lon,orientation lat lon,altitude geo data from any passedf gps datas"""
+
+        if not isinstance(self._gps_track, dict):
+            return None
 
         lat = None
         lon = None
         elevation = None
+
         try:
-            if self._geo_metadata_type == "exiftool":
-                lat, lon, elevation = self._get_gps_data_exiftool()
-            elif self._geo_metadata_type == "georeverse_api":
-                lat, lon, elevation = self._get_gps_data_georeverse()
-            else:
-                print(f"{C_E}🚨[GeoTransformer] No GPS Data found {C_0}")
+            lat = round(float(self._gps_track["lat"]), 6)
+            lon = round(float(self._gps_track["lon"]), 6)
+            elevation = int(round(float(self._gps_track["ele"]), 0))
         # try exifreverse data first
         except (ValueError, IndexError):
-            print(f"{C_E}🚨[GeoTransformer] No GPS Data found {C_0}")
+            printe("[GeoTransformer] No Valid GPS Data found ")
             return None
 
         lat_orientation = "N" if lat >= 0 else "S"
         lon_orientation = "E" if lat >= 0 else "W"
         return (lat, lon, lat_orientation, lon_orientation, elevation)
+
+    def get_gps_extra(self) -> dict:
+        """Returns additional extra metadata like heartrate and temperature"""
+        if not isinstance(self._gps_track, dict):
+            return {}
+
+        # for now hardcoded values from gps_track format
+        heartrate = self._gps_track.get("extensions_trackpointextension_hr")
+        temperature = self._gps_track.get("extensions_trackpointextension_atemp")
+        elevation = self._gps_track.get("ele")
+        datetime_ = self._gps_track.get("time")
+
+        out = {HEARTRATE: heartrate, TEMPERATURE: temperature, ELEVATION: elevation, DATETIME: datetime_}
+        out = {k: v for (k, v) in out.items() if v is not None}
+        # convert to int
+        for k, v in out.items():
+            if k in [HEARTRATE, ELEVATION, TEMPERATURE]:
+                try:
+                    v_ = int(v)
+                    out[k] = v_
+                except (AttributeError, ValueError, TypeError):
+                    pass
+        return out
+    
+    
 
     def transform(self) -> dict:
         """gets the labels from the the metadata segment
@@ -500,20 +651,16 @@ class GeoMetaTransformer:
         address metadata
         """
 
-        def map_meta_value(fields: list) -> Optional[Any]:
+        def map_meta_value(fields: list, data_dict: dict) -> Optional[Any]:
             """maps fields from the dict.
             Upon first non empty occurence this value is returned"""
             for field in fields:
-                value = self._meta_dict.get(field)
+                value = data_dict.get(field)
                 if value is not None:
                     return value
             return None
 
         out = {}
-        address_dict = self.get_value_from_meta(METADATA_SEGMENT)
-        if address_dict is None:
-            print(f"{C_E}🚨[GeTransformer] Couldn't find metadata segment{C_0}")
-            return
 
         lat = None
         lon = None
@@ -546,6 +693,8 @@ class GeoMetaTransformer:
         transmission_reference = f"Own Photography ({datetime_meta_s})"
         # filename
         filename = self._filename
+        # gps_extra: Temperature, Heartrate,etc
+        gps_extra: dict = self.get_gps_extra()
 
         field_map = {
             # fixed values
@@ -569,11 +718,14 @@ class GeoMetaTransformer:
             LON_ORIENTATION: lon_orientation,
             ELEVATION: elevation,
             ELEVATION_REF: 1,  # elevation set to above 0 in all cases
+            HEARTRATE: gps_extra.get(HEARTRATE),
+            TEMPERATURE: gps_extra.get(TEMPERATURE),
             GEO_URL: geo_url,
             # determine
             COUNTRY: COUNTRY_LABELS,
             COUNTRY_CODE: COUNTRYCODE_LABELS,
             STATE: STATE_LABELS,
+            # there is no zip code
             ZIP_CODE: ZIP_LABELS,
             SUBREGION: SUBREGION_LABELS,
             LOCATION: CITY_LABELS,
@@ -586,14 +738,31 @@ class GeoMetaTransformer:
         for field, value in field_map.items():
             out_value = value
             # for now lists only contain field lists
-            # later on we might halso consider keyword lists
+            # later on we might also consider keyword lists
             if field not in [KEYWORDS]:
                 if isinstance(value, list):
-                    out_value = map_meta_value(value)
+                    out_value = map_meta_value(value, self._address_segment)
 
             if out_value is None:
                 continue
             out[field] = out_value
+
+        return out
+
+    @staticmethod
+    def get_iptc_metadata(exiftool_metadata: dict) -> dict:
+        """gets the results from the transform() method and exports them as
+        supported IPTC values, so that it can be used to get keywords
+        """
+
+        out = {}
+
+        # reverse the metadata dictionary to IPTC metadata
+        for iptc_key, metadata_key in METADATA_IPTC_MAP.items():
+            value = exiftool_metadata.get(metadata_key)
+            if value is None:
+                continue
+            out[iptc_key] = value
 
         return out
 
@@ -611,7 +780,6 @@ class GeoMetaTransformer:
             else:
                 paths.append(new_prefix)
         out = {"paths": paths}
-        print(f"### {name}\n{json.dumps(out, indent=4)}")
 
         return paths
 
@@ -624,7 +792,6 @@ class GeoMetaTransformer:
                 out[key] = list(value.keys())
             else:
                 out[key] = []
-        print(f"### \n{json.dumps(out, indent=4)}")
         return out
 
 
@@ -633,7 +800,7 @@ if __name__ == "__main__":
     # GeoMetaTransformer._dict_key_paths(SAMPLE_EXIFREVERSE["sample"], name="SAMPLE_EXIFREVERSE")
     # print(list(SAMPLE_METADATA_EXIFTOOL_TAGS[0].keys()))
     pass
-    f = r"...\makernotes.json"
+    f = r"...\keywords.json"
     d = Persistence.read_json(f)
     GeoMetaTransformer.extract_key_lists(d[0])
-    GeoMetaTransformer.extract_key_lists(d[1])
+    # GeoMetaTransformer.extract_key_lists(d[1])

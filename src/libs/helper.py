@@ -285,7 +285,6 @@ class CmdRunner:
             bool: True if the command succeeded, False otherwise.
         """
         out = []
-
         try:
             # encoding: latin1 / cp1252 (windows) / utf-8
             process = subprocess.Popen(
@@ -319,7 +318,6 @@ class CmdRunner:
 
                 if not stdout_line and not stderr_line and process.poll() is not None:
                     break
-
             return out
 
         except Exception as e:
@@ -379,7 +377,7 @@ class Persistence:
             return {}
 
     @staticmethod
-    def save_txt(filepath: Path | str, lines: Union[str, List[str]]) -> None:
+    def save_txt(filepath: Path | str, lines: Optional[Union[str, List[str]]]) -> None:
         """
         Save a string or list of strings to a text file with exception handling.
 
@@ -387,6 +385,10 @@ class Persistence:
             filepath (Path): Path to save the file.
             lines (Union[str, List[str]]): Content to write. If string, converted to list.
         """
+        if lines is None:
+            # TODO add debug message
+            return
+
         _filepath = filepath
         if isinstance(filepath, str):
             _filepath = Path(filepath)
@@ -403,7 +405,7 @@ class Persistence:
             print(f"{C_E}Failed to save file {_filepath}: {e}{C_0}")
 
     @staticmethod
-    def save_json(filepath: Path | str, data: Dict[str, Any]) -> None:
+    def save_json(filepath: Path | str, data: Optional[Dict[str, Any]]) -> None:
         """
         Save a dictionary to JSON, converting datetime objects to ISO strings.
 
@@ -411,6 +413,10 @@ class Persistence:
             filepath (Path): Path to save the JSON file.
             data (Dict[str, Any]): Data to save.
         """
+        if data is None:
+            # TODO Add DEBUG Message
+            return
+
         _filepath = Path(filepath)
 
         def default_serializer(obj):

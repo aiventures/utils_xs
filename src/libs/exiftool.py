@@ -348,6 +348,7 @@ class ExifTool:
         self._print(f"{C_T}Running exiftool command:{C_0} {cmd}")
         cmd_output = CmdRunner.run_cmd_and_print(cmd)
         timestamp_image = None
+
         if not cmd_output:
             print(f"{C_E}🚨 Exiftool command [{cmd}] failed.{C_0}")
             return None

@@ -12,7 +12,7 @@ GENERIC = "GENERIC"
 SOURCE_FILE = "SourceFile"
 EXIFTOOL = "ExifTool"
 FILE = "File"
-IPTC = "EXIF"
+IPTC = "IPTC"
 EXIF = "EXIF"
 FLASHPIX = "FlashPix"
 MAKERNOTES = "MakerNotes"
@@ -578,7 +578,8 @@ EXIF_META_ALL = {
 class ExifToolFieldsMapper:
     """class to parse image meta data and to export keywords, etc"""
 
-    def __init__(self, metadata: dict):
+    def __init__(self, metadata: dict, transformed_metadata: Optional[dict] = None):
+        """uses preprocessed data to parse keywords"""
         self._metadata: dict = metadata
         self._metadata_file: dict = metadata.get(FILE, {})
         self._metadata_iptc: dict = metadata.get(IPTC, {})
@@ -586,7 +587,11 @@ class ExifToolFieldsMapper:
         self._metadata_composite: dict = metadata.get(COMPOSITE, {})
         self._metadata_makernotes: dict = metadata.get(MAKERNOTES, {})
         self._camera = self._metadata_exif.get("Make", "na").lower()
-        # get the camer tyoe
+        # output of GeoMetaTransformer
+        self._transformed_metadata: Optional[dict] = (
+            transformed_metadata if isinstance(transformed_metadata, dict) else {}
+        )
+        # get the camera type
         if "fuji" in self._camera:
             self._camera = FUJI
         elif "leica" in self._camera:
@@ -657,7 +662,7 @@ class ExifToolFieldsMapper:
         }
 
         # used units in metadata
-        units = ["mm", "m", "deg"]
+        # units = ["mm", "m", "deg"]
 
         # now create keywords if existent
         for attribute, attribute_text in attribute_text_map.items():
@@ -668,8 +673,24 @@ class ExifToolFieldsMapper:
                 value = str(value)
             # special case convert coc to um
             if attribute == "CircleOfConfusion":
-                value = round(1000 * float(value.split()[0]), 0)
-                value = f"str({value})um"
+                value = int(1000 * float(value.split()[0]))
+                value = f"{str(value)}um"
+            elif attribute == "ExposureTime":
+                value = f"{value}s"
+            elif attribute == "Megapixels":
+                value = f"{value}MP"
+            elif attribute in ["FOV", "FocalLength", "FocalLengthIn35mmFormat"]:
+                if attribute == "FOV":
+                    unit = "deg"
+                    value_ = value.replace("deg", "")
+                else:
+                    unit = "mm"
+                    value_ = value.replace("mm", "")
+                try:
+                    value_ = float(value_)
+                    value = str(int(round(value_, 0))) + unit
+                except (IndexError, ValueError, AttributeError):
+                    pass
 
             # drop all spaces
             value = value.replace(" ", "")
@@ -684,10 +705,11 @@ class ExifToolFieldsMapper:
             if value is None:
                 continue
             # check if all items are normal
-            num_ignore = len([im for im in IGNORE_META if im in attribute.lower()])
+            num_ignore = len([im for im in IGNORE_META if im in str(value).lower()])
+
             if num_ignore > 0:
                 continue
-            out[attribute] = f"{attribute} ({str(value)})"
+            out[attribute] = f"{attribute} {str(value)}"
         return out
 
     def _get_makernotes_fuji(self) -> list[str]:
@@ -736,6 +758,46 @@ class ExifToolFieldsMapper:
             out.append(mapped_value.replace(attribute, attributes[attribute]))
         return out
 
+    def _get_transformed_metadata(self) -> list[str]:
+        """get any extra tramsformed exif metadata
+        output similar to:
+        {
+            "file": "xyz.jpg",
+            "author": "UNKNOWNN AUTHOR",
+            "authortitle": "Honorable",
+            "source": "own photography",
+            "copyright": "(C) Copyright 2025 UNKNOWNN AUTHOR ",
+            "rights": "(C) 2025 ALL RIGHTS RESERVED",
+            "description": "Weiherstraße, Bahnbrücken, Kraichtal, Landkreis Karlsruhe, Baden-Württemberg, 76703, Deutschland",
+            "iptc_category": "NT1",
+            "date_created": "2025-08-31 14:34:46",
+            "urgency": 6,
+            "rating": 3,
+            "genre": "leisure photography",
+            "original_transmission_ref": "Own Photography (2025-08-31 14:34:46)",
+            "datetime": "2025-08-31 14:34:46",
+            "lat": 49.119324,
+            "lon": 8.79133,
+            "lat_orientation": "N",
+            "lon_orientation": "E",
+            "elevation": 242,
+            "elevation_ref": 1,
+            "heartrate": 136,
+            "temperature":14,
+            "geo_url": "https://www.openstreetmap.org/#map=18/49.119324/8.79133",
+            "country": "Deutschland",
+            "country_code": "de",
+            "state": "Baden-Württemberg",
+            "zip_code": "76703",
+            "subregion": "Kraichtal",
+            "location": "Bahnbrücken"
+        }
+        """
+        # TODO MAP FIELDS
+        out = []
+
+        return out
+
     def _get_makernotes_keywords(self) -> list[str]:
         """return camera specific maker notes as keywords"""
         if self._camera == FUJI:
@@ -747,13 +809,17 @@ class ExifToolFieldsMapper:
     def get_keywords(self) -> list[str]:
         """get list of keywords as per submitted metadata"""
         # camera metadata
-        out = [self._get_camera_info(), self._get_lens_info]
+        out = [self._get_camera_info(), self._get_lens_info()]
+        # iptc data / geodata if existent
+        out.extend(self._get_iptc_metadata())
+
+        # other exif data
+        # self._get_exif_metadata()
+
         # camera settings
         out.extend(self._get_shot_info())
         # camera makernotes
         out.extend(self._get_makernotes_keywords())
-        # iptc data / geodata if existent
-        out.extend(self._get_iptc_metadata())
         return out
 
 
