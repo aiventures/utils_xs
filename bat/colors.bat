@@ -12,11 +12,11 @@ rem https://stackoverflow.com/questions/132799/how-can-i-echo-a-newline-in-a-bat
 rem https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
 rem 38;5;f is font color and 48;5;b background color with numbers from 16...231
 
-set NUM_ARGS=0
-for %%x in (%*) do Set /A NUM_ARGS+=1
+set NUM_ARGS_COLORS=0
+for %%x in (%*) do Set /A NUM_ARGS_COLORS+=1
 
 rem if already initialized and no params are supplied skip execution
-if defined COL_TEST if %NUM_ARGS% EQU 0 ( goto end )
+if defined COL_TEST if %NUM_ARGS_COLORS% EQU 0 ( goto end )
 
 rem create an ESQ Sequence
 for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"

@@ -3,10 +3,9 @@ rem bat_s.bat [search use ;: for and/or and eventually use quotations|optional] 
 :: Count number of arguments
 set pwd=%CD%
 set num_args=0
-for %%x in (%*) do set /A num_args+=1
-
+for %%x in (%*) do set /A NUM_ARGS+=1
 :continue
-call colors.bat %*
+
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
 call setenv.bat
@@ -20,6 +19,7 @@ echo %C_T%### RUN %C_PROG%%~f0%C_PY%
 rem no more params go to end
 if %num_args% EQU 0 goto end
 rem at least one param is given 
+
 set "py_args=%py_args% --query %1"
 if %num_args% EQU 1 goto end
 rem at least two params are given 
