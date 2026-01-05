@@ -21,10 +21,7 @@ from libs.helper import Persistence
 
 # custom print commands / note that MY_ENV_PRINT_SHOW_EMOJI and MY_ENV_PRINT_SHOW_EMOJI
 # need to be set accordingly in environment to reflect certain debug levels
-from libs.custom_print import (
-    printe,
-    printw,
-)
+from libs.custom_print import printe, printw, print_json
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
 
 
@@ -287,6 +284,10 @@ URGENCY = "urgency"
 SOURCE = "source"
 RATING = "rating"
 ORIGINAL_TRANSMISSION_REF = "original_transmission_ref"
+
+# Segments
+EXIF = "EXIF"
+
 # https://www.iptc.org/std/photometadata/documentation/userguide/#_intellectual_genre_legacy
 GENRE = "genre"
 DATE_CREATED = "date_created"
@@ -296,6 +297,7 @@ KEYWORDS = "keywords"
 IPTC_CATEGORY = "iptc_category"
 DESCRIPTION = "description"
 DATETIME = "datetime"
+TIMEZONE = "timezone"
 COUNTRY = "country"
 COUNTRY_CODE = "country_code"
 STATE = "state"
@@ -306,8 +308,12 @@ CITY = "city"
 METADATA_GEO = "metadata_geo"
 GEO_URL = "geo_url"
 
+UNKNOWN = "unknown"
+DLUX = "lux"
+FUJI = "fuji"
 LAT = "lat"
 LON = "lon"
+LATLON = "latlon"
 LAT_ORIENTATION = "lat_orientation"
 LON_ORIENTATION = "lon_orientation"
 ELEVATION = "elevation"
@@ -375,7 +381,7 @@ METADATA_IPTC_MAP = {
     "SpecialInstructions": GEO_URL,
     "By-line": AUTHOR,
     "By-lineTitle": AUTHORTITLE,
-    "Credit": COPYRIGHT,
+    "Credit": AUTHOR,
     "Source": SOURCE,
     "ObjectName": LOCATION,
     "DateCreated": DATE_CREATED,
@@ -417,8 +423,17 @@ class GeoMetaTransformer:
         # gets the meta dict
         self._meta_dict: dict = meta_dict
         # gets sub structures of metadata
-        self._meta_exif: dict = meta_dict.get("EXIF", {})
-        self._meta_makernotes: dict = meta_dict.get("MakerNotes", {})
+        self._meta_exif: dict = meta_dict.get(EXIF, {})
+
+        self._meta_makernotes: dict = self._meta_exif.get("MakeNotes", {})
+        self._make = UNKNOWN
+        _make: str = self._meta_exif.get("Make", UNKNOWN).lower()
+        _model: str = self._meta_exif.get("Model", UNKNOWN).lower()
+
+        if DLUX in _model:
+            self._make = DLUX
+        elif FUJI in _make:
+            self._make = FUJI
 
         # geo info as retrieved from exiftool reverse geo
         # get the geo reverse
@@ -460,7 +475,9 @@ class GeoMetaTransformer:
         # }
         self._image_geo_info: Optional[dict] = image_geo_info
         self._image_geo_address: dict = (
-            {} if not isinstance(image_geo_info, dict) else image_geo_info.get("geo_reverse")
+            {}
+            if not isinstance(image_geo_info, dict)
+            else image_geo_info.get("metadata_geo", {}).get("geo_reverse", {})
         )
 
         # geo info as retrieved from reverse geo api
@@ -532,7 +549,7 @@ class GeoMetaTransformer:
             printe("[GeoMetaTransformer] No Proper Geo Metadata detected")
 
         # map standard EXIF darta to keywords automatically
-        # TODO Implement
+        # TODO  🚨Implement
         self._map_exif2keywords: bool = map_exif2keywords
 
     def _get_geo_meta(self) -> Optional[dict]:
@@ -641,8 +658,13 @@ class GeoMetaTransformer:
                 except (AttributeError, ValueError, TypeError):
                     pass
         return out
-    
-    
+
+    def get_timezone(self) -> Optional[str]:
+        """Gets the Timezone From either exiftool or geo reverse"""
+        _timezone = self._image_geo_address.get("GeolocationTimeZone")
+        if _timezone is None:
+            _timezone = self._image_reverse_geo_address.get("extra", {}).get("timezone")
+        return _timezone
 
     def transform(self) -> dict:
         """gets the labels from the the metadata segment
@@ -669,8 +691,10 @@ class GeoMetaTransformer:
         elevation = None
 
         gps_data = self.get_gps_data()
+        latlon = None
         if gps_data is not None:
             lat, lon, lat_orientation, lon_orientation, elevation = gps_data
+            latlon = f"{str(lat)}{lat_orientation} {str(lon)}{lon_orientation}"
 
         display_name = self.get_display_name()
         geo_url = None if lat is None else Geo.latlon2osm((lat, lon))
@@ -690,11 +714,13 @@ class GeoMetaTransformer:
         rights = f"(C) {str(year)} ALL RIGHTS RESERVED"
         # misusing the genre metadata
         genre = "leisure photography"
-        transmission_reference = f"Own Photography ({datetime_meta_s})"
+        transmission_reference = f"{datetime_meta_s}"
         # filename
         filename = self._filename
         # gps_extra: Temperature, Heartrate,etc
         gps_extra: dict = self.get_gps_extra()
+        # timezone
+        timezone = self.get_timezone()
 
         field_map = {
             # fixed values
@@ -706,12 +732,14 @@ class GeoMetaTransformer:
             RIGHTS: rights,
             DESCRIPTION: display_name,
             IPTC_CATEGORY: iptc_category,
+            TIMEZONE: timezone,
             DATE_CREATED: datetime_meta_s,
             URGENCY: urgency,
             RATING: rating,
             GENRE: genre,
             ORIGINAL_TRANSMISSION_REF: transmission_reference,
             DATETIME: datetime_meta_s,
+            LATLON: latlon,
             LAT: lat,
             LON: lon,
             LAT_ORIENTATION: lat_orientation,
@@ -729,6 +757,7 @@ class GeoMetaTransformer:
             ZIP_CODE: ZIP_LABELS,
             SUBREGION: SUBREGION_LABELS,
             LOCATION: CITY_LABELS,
+            # add specific makernotes
         }
 
         # add keywords if populated

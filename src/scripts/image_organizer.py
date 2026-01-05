@@ -212,10 +212,7 @@ from libs.custom_print import (
 
 
 from libs.geo_meta_transformer import GeoMetaTransformer
-from libs.exiftool_fields import ExifToolFieldsMapper
-
-from libs.exiftool_fields import IPTC, EXIF
-
+from libs.exiftool_fields import ExifToolFieldsMapper, IPTC
 
 from libs.geo import (
     CONFIG_F_GPX_MERGED,
@@ -646,10 +643,6 @@ class GeoLocation:
             f_output_json = f_output.parent.joinpath(f"{f_output.stem}.json")
             _ = GeoLocation.create_dict_from_gpx(p_source=f_output, f_output=f_output_json)
             printt(f"Merged GPX JSON saved to {C_H}{f_output_json}")
-
-            # print(json.dumps(_, indent=4))
-            # GeoLocation.create_dict_from_gpx()
-            # pass
         return str(f_output)
 
     @staticmethod
@@ -888,7 +881,7 @@ class ImageOrganizer:
             language=self._language,
             f_exiftool=self._cmd_exiftool,
             f_gpx_merged=self._f_gpx_merged,
-            output=self._cmd_exiftool_output,
+            show_output=self._cmd_exiftool_output,
         )
 
         exiftool = exiftool if exiftool.is_instanciated else None
@@ -1222,17 +1215,10 @@ class ImageOrganizer:
         for changing EXIF Metadata using Exiftool"""
         out = []
         _f_exiftool_import = self._f_exiftool_import
-        # TODO 🚨 PRIO1 IMPLEMENT MAPPING
-        # self._metadata contains all updsated segemetns so far so we only have to collect everything for each image
-        # Persistence.save_json("hugo_tmp.json", self._metadata)
-        #  self._metadata [CONFIG_F_EXIFTOOL_IMPORT][FILES]
-        # print("HUGO")
-        # _gps_track = self._metadata.get(GPS_TRACK, {})
-        # print("HUGO GPS TRACK ", len(_gps_track))
-        _image_metadata = self._collect_metadata_by_image()
-        _num_images = len(_image_metadata)
+        _images_metadata = self._collect_metadata_by_image()
+        _num_images = len(_images_metadata)
         print(f"{C_H}📷 [ImageOrganizer] Prepare Metadata Mapping for [{_num_images}] Images{C_0}")
-        for _idx, (_filename, _img_metadata) in enumerate(_image_metadata.items()):
+        for _idx, (_filename, _img_metadata) in enumerate(_images_metadata.items()):
             Helper.show_progress(_idx, _num_images, "Mapped Images")
             _filename: str = _img_metadata.get(FILENAME)
             _file_path: str = _img_metadata.get(FILEPATH)
@@ -1240,16 +1226,17 @@ class ImageOrganizer:
             _meta_dict: Optional[dict] = _img_metadata.get(METADATA_EXIF)
             _gps_track: Optional[dict] = _img_metadata.get(GPS_TRACK)
 
-            # print("HUGO GPS ", json.dumps(_gps_track, indent=4))
             # _gps_track: dict = _img_metadata.get(GPS_TRACK)
             _image_geo_info: dict = _img_metadata.get(IMAGE_GEO_INFO)
             _image_reverse_geo_info = _img_metadata.get(IMAGE_REVERSE_GEO_INFO)
-            print_json(_image_reverse_geo_info, f"HUGO {C_F}[{_filename}]", True, "DEBUG")
+            # print_json(_image_reverse_geo_info, f"HUGO {C_F}[{_filename}]", True, "DEBUG")
 
-            # TODO SET DEFAULT KEYWORDS
-            _camera_keywords: Optional[list[str]] = None
-            # TODO SET THIS PARAMETER FROM ARGPARSE
+            # TODO 🟡 SET DEFAULT KEYWORDS
+            _keywords: Optional[list[str]] = None
+            # TODO 🟡 SET THIS PARAMETER FROM ARGPARSE
             _map_exif2keywords: bool = True
+
+            print_json(_meta_dict, f"Meta Dict for {C_F}[{_filename}]", True, "DEBUG")
 
             _transformer = GeoMetaTransformer(
                 _filename,
@@ -1259,65 +1246,38 @@ class ImageOrganizer:
                 _gps_track,
                 _file_path,
                 _datetime_created,
-                _camera_keywords,
+                _keywords,
                 _map_exif2keywords,
             )
             _metadata_transformed = _transformer.transform()
             # show transformed json in debug mode
-            print_json(_metadata_transformed, f"Transformed Metadata for File {C_F}[{_filename}]", True, "DEBUG")
-            # get the IPTC representation of the metadata / update the metadata file
-            _metadata_iptc = GeoMetaTransformer.get_iptc_metadata(_metadata_transformed)
-            print_json(_metadata_iptc, f"IPTC Metadata for File {C_F}[{_filename}]", True, "DEBUG")
-            _img_metadata[METADATA_EXIF][IPTC] = _metadata_iptc
+            # print_json(
+            #     _metadata_transformed,
+            #     f"[ImageOrganizer] Transformed Metadata for File {C_F}[{_filename}]",
+            #     True,
+            #     "DEBUG",
+            # )
             # geo metadata entry if found
-            print_json(_gps_track, f"GPS GeoTrack Data for File {C_F}[{_filename}]", True, "DEBUG")
+            print_json(_gps_track, f"[ImageOrganizer] GPS GeoTrack Data for File {C_F}[{_filename}]", True, "DEBUG")
+            # get the IPTC representation of the metadata / update the metadata file / it consists of cleaned IPTC DATA
+            _metadata_iptc = GeoMetaTransformer.get_iptc_metadata(_metadata_transformed)
+            # clean out any metadata not part of IPTC Metadata
+            print_json(_metadata_iptc, f"[ImageOrganizer] IPTC Metadata for File {C_F}[{_filename}]", True, "DEBUG")
+            _img_metadata[METADATA_EXIF][IPTC] = _metadata_iptc
             # print("HUGO ", list(_img_metadata[METADATA_EXIF].keys()))
             # now collect all keywords
+            # TODO 🔵 add keyword update mode: replace, update
+            _field_mapper = ExifToolFieldsMapper(_img_metadata[METADATA_EXIF], _metadata_transformed)
+            _keywords = _field_mapper.get_keywords()
 
-            # TODO add a keyword mode: replace, update
-            _field_mapper = ExifToolFieldsMapper(_img_metadata[METADATA_EXIF])
-            _camera_keywords = _field_mapper.get_keywords()
-
-            #  {
-            #     "file": "fuji_test.jpg",
-            #     "author": "UNKNOWNN AUTHOR",
-            #     "authortitle": "Honorable",
-            #     "source": "own photography",
-            #     "copyright": "(C) Copyright 2025 UNKNOWNN AUTHOR ",
-            #     "rights": "(C) 2025 ALL RIGHTS RESERVED",
-            #     "description": "Weiherstraße, Bahnbrücken, Kraichtal, Landkreis Karlsruhe, Baden-Württemberg, 76703, Deutschland",
-            #     "iptc_category": "NT1",
-            #     "date_created": "2025-08-31 14:34:46",
-            #     "urgency": 6,
-            #     "rating": 3,
-            #     "genre": "leisure photography",
-            #     "original_transmission_ref": "Own Photography (2025-08-31 14:34:46)",
-            #     "datetime": "2025-08-31 14:34:46",
-            #     "lat": 49.119324,
-            #     "lon": 8.79133,
-            #     "lat_orientation": "N",
-            #     "lon_orientation": "E",
-            #     "elevation": 242.0,
-            #     "elevation_ref": 1,
-            #     "geo_url": "https://www.openstreetmap.org/#map=18/49.119324/8.79133",
-            #     "country": "Deutschland",
-            #     "country_code": "de",
-            #     "state": "Baden-Württemberg",
-            #     "zip_code": "76703",
-            #     "subregion": "Kraichtal",
-            #     "location": "Bahnbrücken"
-
-            print_json({"keywords": _camera_keywords}, f"Keywords for File {C_F}[{_filename}]", True, "DEBUG")
-
-            # _transformer = GeoMetaTransformer()
-            # now map the nested metadata into a plain json file to be used for exiftool metadata update
-            # _field_mapper = ExifToolFieldsMapper(_img_metadata)
-            # based on mapped metadata, create keywords
-
-            # _geo_meta_transformer(file)
-            pass
-
-        # print(f"{C_H}🌍 Reading reverse geo info from reverse geo service")
+            print_json({"keywords": _keywords}, f"[ImageOrganizer] Keywords for File {C_F}[{_filename}]", True, "DEBUG")
+            # Pull Together all metadata
+            _metadata_transformed.update(_metadata_iptc)
+            _metadata_transformed["keywords"] = _keywords
+            # map the metadata as output
+            _metadata_transformed = _field_mapper.map_metadata(_metadata_transformed)
+            if len(_metadata_transformed) > 0:
+                out.append(_metadata_transformed)
 
         return out
 
@@ -1624,11 +1584,16 @@ class ImageOrganizer:
         _metadata = self.process_reverse_geo_metadata(overwrite=self._overwrite_reverse_geo)
 
         # 9. Prepare exiftool json for import of Exiftool
-        exiftool_metadata = self._prepare_exiftool_import()
+        _exiftool_metadata = self._prepare_exiftool_import()
+        if len(_exiftool_metadata) > 0:
+            f_exiftool_metadata = self._path / F_EXIFTOOL_IMPORT
+            _metadata[FILES][CONFIG_F_EXIFTOOL_IMPORT] = str(f_exiftool_metadata)
+            Persistence.save_json(f_exiftool_metadata, _exiftool_metadata)
 
         # 10. Save all Data to a big metadata.json
         f_metadata = _metadata[FILES][CONFIG_F_METADATA]
         Persistence.save_json(f_metadata, _metadata)
+        print("HUGO", f_metadata)
 
     def extract_image_timestamp(self) -> Dict[str, Any]:
         """

@@ -405,7 +405,7 @@ class Persistence:
             print(f"{C_E}Failed to save file {_filepath}: {e}{C_0}")
 
     @staticmethod
-    def save_json(filepath: Path | str, data: Optional[Dict[str, Any]]) -> None:
+    def save_json(filepath: Path | str, data: Optional[Dict[str, Any] | list]) -> None:
         """
         Save a dictionary to JSON, converting datetime objects to ISO strings.
 

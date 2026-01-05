@@ -106,7 +106,9 @@ def print_level(s: str, level: str) -> Optional[str]:
     s_ = printcol(s_, color, emoji)
 
 
-def print_json(d: dict, title: Optional[str] = None, lf: bool = False, debuglevel: str = "INFO") -> Optional[str]:
+def print_json(
+    d: dict, title: Optional[str] = None, lf: bool = False, debuglevel: str = "INFO", col_json: str = C_PY
+) -> Optional[str]:
     """default printout of dictionaries"""
     if not isinstance(d, dict):
         return
@@ -121,7 +123,7 @@ def print_json(d: dict, title: Optional[str] = None, lf: bool = False, debugleve
     if title is not None:
         emoji = "🔢" if get_print_show_emoji() else None
         printcol(title, C_T, emoji)
-    printcol(data, C_PY)
+    printcol(data, col_json)
     return data
 
 

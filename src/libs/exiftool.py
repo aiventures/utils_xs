@@ -105,7 +105,7 @@ class ExifTool:
         language: str = "de",
         f_exiftool: Optional[Union[str, Path]] = CMD_EXIFTOOL,
         f_gpx_merged: Optional[str] = F_GPX_MERGED,
-        output: bool = True,
+        show_output: bool = True,
     ):
         # do a check whether f_exiftool points to a file
         self._is_instanciated: bool = True
@@ -126,7 +126,7 @@ class ExifTool:
         # utf-8 struggles in my case
         self._encoding: str = encoding
         # output data
-        self._output = output
+        self._show_output = show_output
         # language code
         self._language = language
         # add an f_gpx_merged path if it exists / use a default
@@ -139,8 +139,8 @@ class ExifTool:
         return self._is_instanciated
 
     def _print(self, s: str) -> None:
-        """Output if lag is set"""
-        if self._output:
+        """Output if flag is set"""
+        if self._show_output:
             print(s)
 
     def get_reverse_geoinfo(self, latlon: Tuple | List, file: str = None, index: int = 0, show: bool = False) -> dict:
