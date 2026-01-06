@@ -37,6 +37,7 @@ FILES_ENV = "files_env"
 METADATA_EXIF = "metadata_exif"
 METADATA_IPTC = "metadata_iptc"
 METADATA_GEO = "metadata_geo"
+METADATA_EXIFTOOL = "metadata_exiftool"
 
 METADATA_OSM = "metaddata_osm"
 TIMESTAMP_IMAGE = "timestamp_image"
@@ -295,136 +296,6 @@ class Geo:
         return f"https://www.openstreetmap.org/#map={detail}/{lat}/{lon}"
 
     # @staticmethod
-    # def nominatimreverse2dict(geo_json, debug=False):
-    #     """transforms json nominatim reverse response into a plain / flattened dictionary format"""
-
-    #     # local method to add dictionary entries
-    #     def add2dict(d: dict, prefix: str):
-    #         if d is None:
-    #             return {}
-    #         keys = []
-    #         trg_dict = {}
-    #         for k, v in d.items():
-    #             key = "_".join([prefix, k])
-    #             keys.append(key)
-    #             trg_dict[key] = v
-    #         trg_dict[("_".join([prefix, "keys"]))] = keys
-    #         return trg_dict
-
-    #     property_dict = {}
-
-    #     # additional parameter from url request
-    #     property_dict["nominatim_url"] = geo_json.get("nominatim_url")
-    #     property_dict["http_status"] = geo_json.get("http_status")
-    #     addressdetails = geo_json.get("addressdetails", 18)
-    #     property_dict["addressdetails"] = addressdetails
-
-    #     err = geo_json.get("error", None)
-    #     if err is not None:
-    #         property_dict["error"] = err
-    #         return property_dict
-
-    #     # FeatureCollection
-    #     property_dict["osm_type"] = geo_json.get("type")
-    #     # License Notice
-    #     property_dict["osm_licence"] = geo_json.get("licence")
-
-    #     try:
-    #         features = geo_json.get("features")[0]
-    #     except:
-    #         print("No Features Found in OSM Data")
-    #         features = {}
-
-    #     # Feature
-    #     property_dict["features_type"] = features.get("type")
-
-    #     # Properties
-    #     # 'place_id', 'osm_type', 'osm_id', 'place_rank', 'category', 'type', 'importance',
-    #     # 'addresstype', 'name', 'display_name']
-    #     try:
-    #         properties = features["properties"]
-    #     except:
-    #         print("No Properties Found in OSM Data")
-    #         properties = {}
-
-    #     for k, v in properties.items():
-    #         if isinstance(v, str):
-    #             property_dict[("properties_" + k)] = v
-
-    #     properties = {
-    #         "address": properties.get("address"),
-    #         "extratag": properties.get("extratags"),
-    #         "namedetail": properties.get("namedetails"),
-    #     }
-
-    #     for k, v in properties.items():
-    #         d = add2dict(v, k)
-    #         property_dict.update(d)
-
-    #     # list lat_min lon_min lat_max lat min
-    #     try:
-    #         bbox = list(map(lambda v: float(v), features.get("bbox")))
-    #         bbox = list(map(lambda c: round(c, 5), bbox))
-    #         latlon_min = [bbox[1], bbox[0]]
-    #         latlon_max = [bbox[3], bbox[2]]
-    #         property_dict["latlon_min"] = latlon_min
-    #         property_dict["latlon_max"] = latlon_max
-    #         # calculate distance in m
-    #         property_dict["distance_m"] = round(Geo.get_distance(latlon_min, latlon_max) * 1000)
-    #     except:
-    #         property_dict["latlon_min"] = None
-    #         property_dict["latlon_max"] = None
-
-    #     try:
-    #         geometry = features["geometry"]
-    #         # list lat lon
-    #         latlon = list(map(lambda v: float(v), geometry.get("coordinates")))[::-1]
-    #         latlon = list(map(lambda c: round(c, 5), latlon))
-    #         property_dict["latlon"] = latlon
-    #         latlon = property_dict["latlon"]
-    #         property_dict["url_geohack"] = Geo.GEOHACK_URL + Geo.latlon2geohack(latlon)
-    #         property_dict["url_osm"] = Geo.latlon2osm(latlon, detail=addressdetails)
-    #         # skalar
-    #         property_dict["geometry_type"] = geometry.get("type")
-    #     except:
-    #         print("No Geometry Found in OSM Data")
-    #         property_dict["latlon"] = None
-    #         property_dict["geometry_type"] = None
-
-    #     if debug is True:
-    #         print(f"----Geo Dictionary----")
-    #         for k, v in property_dict.items():
-    #             print(f"\t{k} -> {str(v)} ")
-
-    #     return property_dict
-
-    # @staticmethod
-    # def geo_reverse_from_nominatim(latlon, zoom=18, addressdetails=18, debug=False) -> dict:
-    #     """Executes reverse search on nominatim geoserver, returns result als flattened dict
-    #     specification https://nominatim.org/release-docs/latest/api/Reverse/
-    #     'https://nominatim.openstreetmap.org/reverse?format=geojson&lat=48.7791304&lon=9.186206&zoom=18&addressdetails=18'
-    #     """
-
-    #     url = Geo.NOMINATIM_REVERSE_URL
-    #     params = Geo.NOMINATIM_REVERSE_PARAMS.copy()
-    #     params["lat"] = str(latlon[0])
-    #     params["lon"] = str(latlon[1])
-    #     params["addressdetails"] = str(addressdetails)
-    #     zoom = str(zoom)
-    #     params["zoom"] = zoom
-
-    #     response = requests.get(url, params)
-
-    #     geo_json = response.json()
-    #     geo_json["nominatim_url"] = response.url
-    #     geo_json["http_status"] = response.status_code
-    #     geo_json["addressdetails"] = zoom
-
-    #     geo_dict = Geo.nominatimreverse2dict(geo_json, debug=debug)
-
-    #     return geo_dict
-
-    # @staticmethod
     # def get_nearest_gps_waypoint(
     #     latlon_ref, gps_fileref, date_s_ref=None, tz="Europe/Berlin", dist_max=1000, debug=False
     # ) -> dict:
@@ -436,45 +307,33 @@ class Geo:
     #     distmax     -- maximum distance in m whether point will be used as minimum distance (default 1000m)
     #     debug       -- outpur additional information
     #     """
-
     #     gps_min = {}
-
     #     dist_min = dist_max
-
     #     tz = "Europe/Berlin"
     #     dt_ref = Util.get_datetime_from_string(datetime_s=date_s_ref, local_tz=tz)
-
     #     # geohack url
     #     url_geohack = Geo.GEOHACK_URL + Geo.latlon2geohack(latlon_ref)
-
     #     # load gps data
     #     gps_coords = Persistence.read_gpx(gpsx_path=gps_fileref)
-
     #     if not gps_coords:
     #         print(f"no gps data found in file {gps_fileref}")
     #         return gps_min
-
     #     num = len(gps_coords.keys())
-
     #     timestamps = list(gps_coords.keys())
     #     timestamps.sort()
     #     timestamp_min = min(timestamps)
     #     timestamp_max = max(timestamps)
-
     #     # utc from (utc) timestamp
     #     dt_min_utc = datetime.utcfromtimestamp(timestamp_min)
     #     dt_max_utc = datetime.utcfromtimestamp(timestamp_max)
-
     #     # get localized datetime
     #     dt_min = Util.get_localized_datetime(dt_min_utc, tz_in="UTC", tz_out=tz)
     #     dt_max = Util.get_localized_datetime(dt_max_utc, tz_in="UTC", tz_out=tz)
-
     #     # get geo data
     #     geo_min = gps_coords[timestamp_min]
     #     latlon_min = (geo_min["lat"], geo_min["lon"])
     #     geo_max = gps_coords[timestamp_max]
     #     latlon_max = (geo_max["lat"], geo_max["lon"])
-
     #     if debug:
     #         dist_max = int(1000 * Geo.get_distance(latlon_ref, latlon_max))
     #         dist_min = int(1000 * Geo.get_distance(latlon_ref, latlon_min))
@@ -490,9 +349,7 @@ class Geo:
     #         print(f"--- Reference latlon: {latlon_ref} / Datetime {dt_ref}")
     #         print("    Geohack url:", url_geohack)
     #         print(f"--- Distance: start-ref {dist_min}m, end-ref {dist_max}m, start-end {dist_track}m")
-
     #     timestamp_min = None
-
     #     for timestamp, gps_coord in gps_coords.items():
     #         latlon = [gps_coord["lat"], gps_coord["lon"]]
     #         dist = int(1000 * Geo.get_distance(latlon_ref, latlon))
@@ -511,7 +368,6 @@ class Geo:
     #             else:
     #                 gps_min["timedelta_from_ref"] = None
     #             gps_min["url_geohack"] = Geo.GEOHACK_URL + Geo.latlon2geohack(latlon)
-
     #     if gps_min.get("distance_m", dist_max) < dist_max:
     #         if debug:
     #             print(f"--- Nearest GPS Trackpoint")

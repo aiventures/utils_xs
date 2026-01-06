@@ -3,6 +3,9 @@
 import os
 import json
 from json import JSONDecodeError
+
+# TODO 🔵 MAYBE ALSO CREATE A JSON TO IMPORT THESE ITEMS
+# for now transfer the variables defined in the env bat file to a python file myenf.py and place it into config
 from config.myenv import MY_CMD_EXIFTOOL
 from typing import Tuple, List, Dict, Optional, Union
 from pathlib import Path
@@ -10,7 +13,6 @@ from copy import deepcopy
 from config.colors import C_0, C_B, C_E, C_F, C_H, C_I, C_L, C_P, C_PY, C_Q, C_S, C_T, C_W
 from libs.helper import CmdRunner, Helper, Persistence, Transformer
 from libs.geo import (
-    GEOREVERSE_METADATA_JSON,
     IMAGE_SUFFIXES,
     F_GPX_MERGED,
     F_OFFSET_ENV,
