@@ -65,9 +65,15 @@ rem Root Path to place Photo Folders
 set "MY_P_PHOTO_OUTPUT_ROOT=%MY_P_PHOTOS_TRANSIENT%\PHOTOS"
 rem Path where to place Images from Camera 
 set "MY_P_PHOTO_DUMP=%MY_P_PHOTO_OUTPUT_ROOT%\_DUMP"
-rem Here's the Defintions for EXIFTOOL Utility
-set "MY_EXIFTOOL_AUTHOR=HUGOAUTHOR"
-
-
+rem Path containing templates
+set "MY_P_UTILS_TEMPLATES=%MY_P_UTILS%\templates"
+rem Path containing Waypoint Template, see https://exiftool.org/geotag.html
+set "MY_F_EXIFTOOL_WPT=%MY_P_UTILS_TEMPLATES%\exiftool_wpt.fmt"
+rem Path to Python SCRIPT for video series rename 
+set "MY_PY_VIDEO_RENAME=%MY_P_UTILS_SCRIPTS%\video_rename.py"
+rem Here's the Defintions for EXIFTOOL Utility which are picked up from the exiftool utility
+rem this is your name and title / used in /src/scripts/image_organizer.py
+set "MY_EXIFTOOL_AUTHOR=HUGOAUTHOR" 
+set "MY_EXIFTOOL_AUTHORTITLE=The Honoroable" 
 
 :end

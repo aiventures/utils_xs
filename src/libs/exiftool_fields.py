@@ -140,6 +140,59 @@ EXIF_META_SELECTED = {
             "SubSecDateTimeOriginal",
             "SubSecModifyDate",
         ],
+        XMP: [
+            "XMPToolkit",
+            "ModifyDate",
+            "MetadataDate",
+            "CreatorTool",
+            "Rating",
+            "RatingPercent",
+            "City",
+            "Country",
+            "AuthorsPosition",
+            "Credit",
+            "CaptionWriter",
+            "Headline",
+            "Instructions",
+            "TransmissionReference",
+            "State",
+            "Source",
+            "Category",
+            "Rights",
+            "Creator",
+            "Description",
+            "Title",
+            "Subject",
+            "CountryCode",
+            "CreatorAddress",
+            "CreatorCity",
+            "CreatorCountry",
+            "CreatorWorkEmail",
+            "CreatorWorkTelephone",
+            "CreatorPostalCode",
+            "CreatorRegion",
+            "CreatorWorkURL",
+            "IntellectualGenre",
+            "Scene",
+            "SubjectCode",
+            "Location",
+            "DateTimeOriginal",
+            "GPSLatitude",
+            "GPSLongitude",
+            "GPSAltitudeRef",
+            "GPSAltitude",
+            "UsageTerms",
+            "ImageCreatorImageCreatorName",
+            "LocationShownCity",
+            "LocationShownCountryName",
+            "LocationShownLocationName",
+            "LocationShownProvinceState",
+            "Orientation",
+            "RawFileName",
+            "AlreadyApplied",
+            "HierarchicalSubject",
+            "PreservedFileName",
+        ],
     },
 }
 
@@ -590,23 +643,31 @@ EXIF_META_ALL = {
     },
 }
 
-# this is a mapt that maps input fields to Image metadata for export
+# this is a mapt that maps input fields to Image metadata for metadata changes using exiftool
 MAP_METADATA: dict = {
     "file": "FileName",
-    "author": ["By-line", "Writer-Editor", "Credit"],
-    "authortitle": "By-lineTitle",
+    "author": [
+        "By-line",
+        "Writer-Editor",
+        "Credit",
+        "Contributor",
+        "Creator",
+        "CaptionWriter",
+        "ImageCreatorImageCreatorName",
+    ],
+    "authortitle": ["By-lineTitle", "AuthorsPosition"],
     "source": "Source",
     "copyright": "Copyright",
-    "rights": "CopyrightNotice",
-    "description": ["Caption-Abstract", "Headline"],
+    "rights": ["CopyrightNotice", "Rights", "UsageTerms"],
+    "description": ["Caption-Abstract", "Headline", "ImageTitle", "Description", "Title"],
     "iptc_category": "Category",
     "make": NOT_MAPPED,
     "timezone": NOT_MAPPED,
     "date_created": "DateCreated",
     "urgency": "Urgency",
     "rating": "Rating",
-    "genre": NOT_MAPPED,
-    "original_transmission_ref": "OriginalTransmissionReference",
+    "genre": "IntellectualGenre",
+    "original_transmission_ref": ["OriginalTransmissionReference", "TransmissionReference"],
     "datetime": NOT_MAPPED,
     "latlon": "GPSPosition",
     "lat": "GPSLatitude",
@@ -616,21 +677,46 @@ MAP_METADATA: dict = {
     "elevation": "GPSAltitude",
     "elevation_ref": "GPSAltitudeRef",
     "heartrate": NOT_MAPPED,
-    "geo_url": "SpecialInstructions",
-    "country": "Country-PrimaryLocationName",
-    "country_code": NOT_MAPPED,
-    "state": "Province-State",
+    "geo_url": ["SpecialInstructions", "Instructions", "BaseURL"],
+    "country": ["Country-PrimaryLocationName", "Country", "LocationShownCountryName"],
+    "country_code": ["CountryCode", "Country-PrimaryLocationCode"],
+    "state": ["Province-State", "State", "LocationShownProvinceState"],
     "zip_code": NOT_MAPPED,
     "subregion": "Sub-location",
-    "location": ["ObjectName", "City"],
+    "location": ["ObjectName", "City", "Location", "LocationShownCity", "LocationShownLocationName"],
     "keywords": "Keywords",
+    "software": ["CreatorTool", "Software"],
+    # MOSTLY XMP Attributes that aren't mapped
+    # "Subject" is a list
+    # "CreatorAddress",
+    # "CreatorCity",
+    # "CreatorCountry",
+    # "CreatorWorkEmailAddress"
+    # "CreatorWorkTelephone",
+    # CreatorPostalCode,
+    # CreatorRegion,
+    # CreatorWorkURL
+    # Scene
+    # SubjectCode
+    # CreatorTool
+    # "Software"
+    # Orientation
+    # "SupplementalCategories" = "xx xxx xxx"
+    # HierarchicalSubject
+    # ObjectAttributeReference > Intellectual Genre
+    # "Orientation"
 }
 
 
 class ExifToolFieldsMapper:
     """class to parse image meta data and to export keywords, etc"""
 
-    def __init__(self, metadata: dict, transformed_metadata: Optional[dict] = None, lensinfo: Optional[str] = None):
+    def __init__(
+        self,
+        metadata: dict,
+        transformed_metadata: Optional[dict] = None,
+        lensinfo: Optional[str] = None,
+    ):
         """uses preprocessed data to parse keywords"""
         self._metadata: dict = metadata
         self._metadata_file: dict = metadata.get(FILE, {})
