@@ -281,7 +281,8 @@ from libs.geo import (
     # OFFSET_GPS,
     LAT_LON,
     METADATA_EXIF,
-    METADATA_IPTC,
+    METADATA_EXIFTOOL,
+    # METADATA_IPTC,
     METADATA_OSM,
     # METADATA_GEO,
     OFFSET,
@@ -808,7 +809,7 @@ class ImageOrganizer:
     def __init__(
         self,
         # actions to be performed
-        action_prepare_geo_meta: bool = True,
+        action_prepare_meta: bool = True,
         action_prepare_transform: bool = True,
         action_change_metadata: bool = True,
         # collateral inforamtion
@@ -820,6 +821,7 @@ class ImageOrganizer:
         use_reverse_geo: bool = True,
         overwrite_reverse_geo: bool = False,
         f_metadata: str = F_METADATA,
+        f_metadata_exif: str = F_METADATA_EXIF,
         f_reverse_geo: str = F_METADATA_GEO_REVERSE,
         f_gpx_merged: str = F_GPX_MERGED,
         f_exiftool_import: str = F_EXIFTOOL_IMPORT,
@@ -838,7 +840,7 @@ class ImageOrganizer:
         self._path: Path = _path.absolute()
 
         # add actions
-        self._action_prepare_geo_meta = action_prepare_geo_meta
+        self._action_prepare_meta = action_prepare_meta
         self._action_prepare_transform = action_prepare_transform
         self._action_change_metadata = action_change_metadata
 
@@ -858,6 +860,8 @@ class ImageOrganizer:
         self._encoding: str = encoding
         # language for metadata
         self._language = language
+        # name of the file containin the exif data export from exiftool
+        self._f_metadata_exif: str = f_metadata_exif
         # name of the metadata file containing everything
         self._f_metadata: str = f_metadata
         # name of the reverse geo file
@@ -1061,7 +1065,7 @@ class ImageOrganizer:
         _reverse_geo.save()
         return _metadata
 
-    def process_geo_metadata(self) -> Optional[Dict]:
+    def _process_geo_metadata(self) -> Optional[Dict]:
         """Based on the metadata file, collect metadata for all images"""
         _path = self._path
         if self._metadata is None:
@@ -1096,7 +1100,7 @@ class ImageOrganizer:
         _has_osm_latlon = False if len(_metadata_osm) == 0 else True
         _osm_latlon = _metadata_osm.get(LAT_LON)
         _osm_geo_info = _metadata_osm.get("geo_info")
-        _timezone = _metadata_osm.get("timezone", "Europe/Berlin")
+        # _timezone = _metadata_osm.get("timezone", "Europe/Berlin")
         _gpx_sorter = None
 
         printt(f"### Collecting Image Metadata in path {C_F}[{str(_path)}]")
@@ -1214,7 +1218,7 @@ class ImageOrganizer:
         """Based on previous actions, prepare a json file that can be used
         for changing EXIF Metadata using Exiftool"""
         out = []
-        _f_exiftool_import = self._f_exiftool_import
+        # _f_exiftool_import = self._f_exiftool_import
         _images_metadata = self._collect_metadata_by_image()
         _num_images = len(_images_metadata)
         print(f"{C_H}📷 [ImageOrganizer] Prepare Metadata Mapping for [{_num_images}] Images{C_0}")
@@ -1250,13 +1254,6 @@ class ImageOrganizer:
                 _map_exif2keywords,
             )
             _metadata_transformed = _transformer.transform()
-            # show transformed json in debug mode
-            # print_json(
-            #     _metadata_transformed,
-            #     f"[ImageOrganizer] Transformed Metadata for File {C_F}[{_filename}]",
-            #     True,
-            #     "DEBUG",
-            # )
             # geo metadata entry if found
             print_json(_gps_track, f"[ImageOrganizer] GPS GeoTrack Data for File {C_F}[{_filename}]", True, "DEBUG")
             # get the IPTC representation of the metadata / update the metadata file / it consists of cleaned IPTC DATA
@@ -1281,7 +1278,7 @@ class ImageOrganizer:
 
         return out
 
-    def merge_metadata(self) -> Dict:
+    def _merge_metadata(self) -> Dict:
         """Reads all metadata and writes them to a merged JSON.
         General Idea: Read available evn files from FILES_ENV
         and transfer the data to FILES or other segments of the file,
@@ -1444,6 +1441,7 @@ class ImageOrganizer:
 
         return output
 
+    # TODO CHECK
     # @staticmethod
     # def read_geosync_from_env(p_source: Path) -> str:
     #     """reads the offset string from the env file"""
@@ -1491,29 +1489,11 @@ class ImageOrganizer:
     #     exif_cmd.extend(additional_params)
     #     # exif_cmd.append(additional_params)
     #     output = CmdRunner.run_cmd_and_print(exif_cmd)
-
     #     return output
 
-    def prepare_collateral_files(
-        self, f_metadata_exif: str = F_METADATA_EXIF, f_gpx_merged: str = F_GPX_MERGED, args: dict = {}
-    ) -> None:
-        """Prepare collateral files centrally.
-        - Delete Collateral Files first
-        - Merge GPX Files if there are any => F_GPX_ENV
-        - Read Calibration Image  => F_TIMESTAMP_CAMERA
-        - Read / Input GPS Time from Image => F_TIMESTAMP_GPS
-        - Calculate Time Offset: F_TIMESTAMP_CAMERA / F_TIMESTAMP_GPS => F_OFFSET_ENV
-        - Extract lat lon default from OSM links => F_LAT_LON_ENV
-        """
-
-        printt("### ImageOrganizer: prepare_collateral_files")
-        # 0. Delete any temporary files
-        self.cleanup_env_files(delete_generated_files=True)
-
-        # Create the EXIF metadata
-        # cmd = self.get_exiftool_cmd_export_meta()
-
-        # 1. All Metadata => metadata_exif.json
+    def _prepare_exif_metadata(self, f_metadata_exif: str = F_METADATA_EXIF) -> None:
+        """extract image metadata."""
+        # All Metadata => metadata_exif.json
         # Exporting all metadata in a path into a json f_metadata_exif (metadata_exif.json)
         # runs: exiftool -r -g -c %.6f -progress 50 -json -<extensions> ...
         cmd_export_metadata = self._exiftool.cmd_export_meta()
@@ -1523,7 +1503,10 @@ class ImageOrganizer:
         if exif_metadata_created:
             Persistence.save_txt(self._path / F_METADATA_EXIF_ENV, str(f_metadata_exif))
 
-        # 2. Create Merged GPS, if not already present: all gpx files => gpx_merged.gpx
+    def _prepare_track_metadata(self, f_gpx_merged: str = F_GPX_MERGED) -> None:
+        """extract gps meta data."""
+
+        # 1. Create Merged GPS, if not already present: all gpx files => gpx_merged.gpx
         f_gpx = GeoLocation.merge_gpx(self._path, self._f_gpx_merged)
         gpx_file_created = False if f_gpx is None else True
         if gpx_file_created:
@@ -1531,13 +1514,13 @@ class ImageOrganizer:
             # store the file name of the merged gpx into an env file
             Persistence.save_txt(self._path.joinpath(F_GPX_MERGED_ENV), str(self._path.joinpath(f_gpx_merged)))
 
-        # 3. Select Reference File and extract timestanp of camera: = => timestamp_img.env
+        # 2. Select Reference File and extract timestanp of camera: = => timestamp_img.env
         timstamp_dict_camera: Dict = self.extract_image_timestamp()
         timestamp_camera_extracted = True if len(timstamp_dict_camera) > 0 else False
         if timestamp_camera_extracted:
             printh(f"Image timestamp: {C_PY}[{timstamp_dict_camera.get('original', 'NA')}]")
 
-        # 4. Now Get the GPS Timestamp (as seen on the image of the previous image)
+        # 3. Now Get the GPS Timestamp (as seen on the image of the previous image)
         #    Writes: offset.env, offset_sec.env, timestamp_gps.json, timestamp_camera.json
         time_offset = self.calculate_time_offset()
         printh(f"Image Offset: {C_PY}[{time_offset}]")
@@ -1551,49 +1534,87 @@ class ImageOrganizer:
             printh(f"    LatLon from OSM: {C_PY}[{str(lat_lon)}]")
             Persistence.save_txt(self._path.joinpath(F_OSM_ENV), str(self._path.joinpath(f_osm_info)))
 
-        # 5. create a dict with all geo info metadata from osm link
+    def _prepare_exiftool_metadata(self) -> None:
+        """parse the existing data into a plain json
+        containing all metadata changes  by EXIFTOOL"""
+        # 9. Prepare exiftool json for import of Exiftool
+        _exiftool_metadata = self._prepare_exiftool_import()
+        if len(_exiftool_metadata) > 0:
+            # TODO 🔵 make the import filename variable
+            f_exiftool_metadata = self._path / F_EXIFTOOL_IMPORT
+            self._metadata[FILES][CONFIG_F_EXIFTOOL_IMPORT] = str(f_exiftool_metadata)
+            # also store the metadata in its own segment
+            self._metadata[METADATA_EXIFTOOL] = _exiftool_metadata
+            Persistence.save_json(f_exiftool_metadata, _exiftool_metadata)
+
+    def prepare_collateral_files(self) -> None:
+        """Prepare collateral files centrally.
+        - Delete Collateral Files first
+        - prepare collateral files
+        - Merge GPX Files if there are any => F_GPX_ENV
+        - Read Calibration Image  => F_TIMESTAMP_CAMERA
+        - Read / Input GPS Time from Image => F_TIMESTAMP_GPS
+        - Calculate Time Offset: F_TIMESTAMP_CAMERA / F_TIMESTAMP_GPS => F_OFFSET_ENV
+        - Extract lat lon default from OSM links => F_LAT_LON_ENV
+        """
+
+        printt("### ImageOrganizer: prepare_collateral_files")
+        #   creation of files per step
+        # - [1] 🔢 metadata_exif.json
+        # - [2] 🌍 gpx_merged.gpx
+        # - [2] 🌍 osm.json
+        # - [2] ⌚ timestamp_gps.json
+        # - [2] ⌚ timestamp_camera.json
+        # - [2] ⌚ offset.env
+        # - [2] ⌚ offset_sec.env
+        # - [2] ⌚ timestamp_img.env
+        # - [6] 💾 exiftool_import.json
+        # - [7] 🔢 metadata.json
+
+        # 0. Delete any temporary files to start with a clean state
+        self.cleanup_env_files(delete_generated_files=True)
+
+        # 1. All Metadata => metadata_exif.json
+        self._prepare_exif_metadata(self._f_metadata_exif)
+
+        # 2. Process GPS Track data => gpx_merged.gpx, timestamp_img.env
+        #    offset.env, offset_sec.env, timestamp_gps.json,
+        #    timestamp_camera.json, osm.json
+        self._prepare_track_metadata(self._f_gpx_merged)
+
+        # 3. create a dict with all geo info metadata from osm link
         # - will be either created from reverse geo or from exiftool geolocation API
-        # Create a metadata json containing everything
-        printh("    Processing Metadata")
         # Will populate segments and refer single files
-        # f_metadata
-        # f_metadata_exif
-        # f_timestamp_img
-        # f_osm
-        # f_gpx_merged
-        # f_timestamp_camera
-        # f_timestamp_gps
-        # f_metadata_geo_reverse
-        # f_exiftool_import
-
+        # f_metadata,f_metadata_exif,f_timestamp_img,f_osm
+        # f_gpx_merged,f_timestamp_camera,f_timestamp_gps
+        # f_metadata_geo_reverse,f_exiftool_import
         # dict of merged meta data is returned / it's also in self._metadata
-        _ = self.merge_metadata()
+        _ = self._merge_metadata()
 
-        # 6. Get the GPS metadata and add it to the merged file
+        # 4. Get the GPS metadata and add it to the merged file
         # if already saved
         # - use the collected exif data as input list
         # - amend the metadata.
         # - get latlon from track or from osm fallback
         # - augment metadata with found metadata
-        gps_metadata = self.process_geo_metadata()
+        gps_metadata = self._process_geo_metadata()
+
         gps_metadata_extracted = False if gps_metadata is None else True
         if gps_metadata_extracted:
             printh("    🌍 Processed GPS Metadata")
 
-        # 8. use_reverse_geo if activated
-        _metadata = self.process_reverse_geo_metadata(overwrite=self._overwrite_reverse_geo)
+        # 5. use_reverse_geo if activated / returns the metadata
+        # save geo reverse data (retrieved from external service as separate json)
+        # returns the updated self._metadata
+        _ = self.process_reverse_geo_metadata(overwrite=self._overwrite_reverse_geo)
 
-        # 9. Prepare exiftool json for import of Exiftool
-        _exiftool_metadata = self._prepare_exiftool_import()
-        if len(_exiftool_metadata) > 0:
-            f_exiftool_metadata = self._path / F_EXIFTOOL_IMPORT
-            _metadata[FILES][CONFIG_F_EXIFTOOL_IMPORT] = str(f_exiftool_metadata)
-            Persistence.save_json(f_exiftool_metadata, _exiftool_metadata)
+        # 6. Create to EXIFTOOL JSON (exiftool_import.json)
+        # that contains the metadata to be used as image metadata
+        self._prepare_exiftool_metadata()
 
-        # 10. Save all Data to a big metadata.json
-        f_metadata = _metadata[FILES][CONFIG_F_METADATA]
-        Persistence.save_json(f_metadata, _metadata)
-        print("HUGO", f_metadata)
+        # 7. Save all Data containing previous changes to a big metadata.json
+        f_metadata = self._metadata[FILES][CONFIG_F_METADATA]
+        Persistence.save_json(f_metadata, self._metadata)
 
     def extract_image_timestamp(self) -> Dict[str, Any]:
         """
@@ -2263,7 +2284,7 @@ class ImageOrganizer:
         """
         parser = argparse.ArgumentParser(description="Auto organize images by date using exif metadata.")
 
-        # used in main
+        # used in main / OK
         parser.add_argument(
             "--action_show_args",
             "--action-show-args",
@@ -2271,7 +2292,7 @@ class ImageOrganizer:
             help="Show the arparse args when running the image organizer",
         )
 
-        # used in main
+        # used in main / OK
         parser.add_argument(
             "--action_move_images",
             "--action-move-images",
@@ -2281,16 +2302,18 @@ class ImageOrganizer:
 
         # part of ImageOrganizer Constructor
         parser.add_argument(
-            "--action_prepare_geo_meta",
-            "--action-prepare-geo-meta",
+            "--action_prepare_meta",
+            "--action-prepare-meta",
+            "-prepare",
             action="store_true",
-            help="Prepare collateral files for geo tagging",
+            help="Prepare collateral files for metadata update",
         )
 
         # part of ImageOrganizer Constructor
         parser.add_argument(
             "--action_prepare_transform",
             "--action-prepare-transform",
+            "-transform",
             action="store_true",
             help="Transform image metadata to a json for EXIFTOOL metadata changes",
         )
@@ -2299,6 +2322,7 @@ class ImageOrganizer:
         parser.add_argument(
             "--action_change_metadata",
             "--action-change-metadata",
+            "-change",
             action="store_true",
             help="Change image metadata using EXIFTOOL",
         )
@@ -2307,6 +2331,7 @@ class ImageOrganizer:
         parser.add_argument(
             "--p_source",
             "--p-source",
+            "-src",
             type=str,
             default=None,
             help="Source folder path where images were dumped (default: current folder if empty)",
@@ -2314,6 +2339,7 @@ class ImageOrganizer:
         parser.add_argument(
             "--p_output",
             "--p-output",
+            "-out",
             type=str,
             default=None,
             help=f"Output root folder where date folders are created (default: {str(P_PHOTO_OUTPUT_ROOT)})",
@@ -2323,6 +2349,7 @@ class ImageOrganizer:
         parser.add_argument(
             "--timezone",
             "--timezone",
+            "-tz",
             type=str,
             default=TIMEZONE_DEFAULT,
             help=f"Timezone (Default: {TIMEZONE_DEFAULT})",
@@ -2340,7 +2367,6 @@ class ImageOrganizer:
         # can be utf-8, latin1, cp1252
         parser.add_argument(
             "--encoding",
-            "--encoding",
             type=str,
             default="latin1",
             help="Character encoding for file names and image metadata (default: latin1)",
@@ -2350,6 +2376,7 @@ class ImageOrganizer:
         parser.add_argument(
             "--do_not_show_gps_image",
             "--do-not-show-gps-image",
+            "-noshow",
             action="store_true",
             help="Do not show a preview of the GPS file",
         )
@@ -2377,6 +2404,15 @@ class ImageOrganizer:
             type=str,
             default=F_METADATA,
             help=f"Filename of Metadata File (Default: {F_METADATA})",
+        )
+
+        # part of ImageOrganizer Constructor
+        parser.add_argument(
+            "--f_metadata_exif",
+            "--f-metadata-exif",
+            type=str,
+            default=F_METADATA_EXIF,
+            help=f"Filename of Metadata File Containing Exif Data Only (Default: {F_METADATA_EXIF})",
         )
 
         # part of ImageOrganizer Constructor
@@ -2447,6 +2483,9 @@ class ImageOrganizer:
         """create an image Organizer instance"""
 
         return cls(
+            action_prepare_meta=args.action_prepare_meta,
+            action_prepare_transform=args.action_prepare_transform,
+            action_change_metadata=args.action_change_metadata,
             path=args.p_source,
             timezone_s=args.timezone,
             max_timediff=args.max_timediff,
@@ -2455,6 +2494,7 @@ class ImageOrganizer:
             use_reverse_geo=(not args.do_not_use_reverse_geo),
             overwrite_reverse_geo=args.overwrite_reverse_geo,
             f_metadata=args.f_metadata,
+            f_metadata_exif=args.f_metadata_exif,
             f_reverse_geo=args.f_reverse_geo,
             f_gpx_merged=args.f_gpx_merged,
             f_exiftool_import=args.f_exiftool_import,
@@ -2527,9 +2567,9 @@ def main() -> None:
     # now process each folder
     # TODO
 
-    _ = image_organizer.prepare_collateral_files() if args.action_prepare_geo_meta else None
+    image_organizer.prepare_collateral_files()
 
-    # if args.action_prepare_geo_meta is True:
+    # if args.action_prepare_meta is True:
     #     return None
 
     # supply argparse defaults
@@ -2541,7 +2581,7 @@ def main() -> None:
     #     print(p_image_folders)
 
     # Prepare the metadata for a dedicated output folder if given
-    # success = ImageOrganizer.action_prepare_geo_meta(args)
+    # success = ImageOrganizer.action_prepare_meta(args)
 
     # now performa all actions as controlled by input params
 
