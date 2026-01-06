@@ -13,8 +13,10 @@ from math import floor
 # from image_meta.util import Util
 # from image_meta.persistence import Persistence
 from datetime import datetime as DateTime
-from datetime import timedelta
-import requests
+import datetime
+
+# from datetime import timedelta
+# import requests
 import traceback
 
 # reverse geo
@@ -189,7 +191,7 @@ class Geo:
         """Creates Exif Metadata Dictionary for GPS Coordinates"""
         geo_dict = {}
 
-        if not (isinstance(latlon, list) ^ isinstance(latlon, tuple)):
+        if not (isinstance(latlon, list) or isinstance(latlon, tuple)):
             return geo_dict
 
         lat, lon = latlon
@@ -212,8 +214,8 @@ class Geo:
             geo_dict["GPSAltitude"] = round(altitude, 0)
 
         if isinstance(timestamp, int):
-            geo_dict["GPSDateStamp"] = DateTime.utcfromtimestamp(timestamp).strftime("%Y:%m:%d")
-            geo_dict["GPSTimeStamp"] = DateTime.utcfromtimestamp(timestamp).strftime("%H:%M:%S")
+            geo_dict["GPSDateStamp"] = DateTime.fromtimestamp(timestamp, datetime.timezone.utc).strftime("%Y:%m:%d")
+            geo_dict["GPSTimeStamp"] = DateTime.fromtimestamp(timestamp, datetime.timezone.utc).strftime("%H:%M:%S")
 
         return geo_dict
 
