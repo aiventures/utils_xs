@@ -645,7 +645,7 @@ EXIF_META_ALL = {
 
 # this is a mapt that maps input fields to Image metadata for metadata changes using exiftool
 MAP_METADATA: dict = {
-    "file": "FileName",
+    "file": "SourceFile",
     "author": [
         "By-line",
         "Writer-Editor",

@@ -81,6 +81,8 @@ import re
 
 # get read/write path from env
 # create this module using bat2py.bat
+# TODO 🚨 Replace by environment access / maybe add a helper class to address this
+# extend the existing /scripts/convert_bat_env_to_python.py
 from config.myenv import MY_P_DESKTOP
 
 

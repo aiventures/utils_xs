@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 # create modules using bat2py.bat
 # best to install the utils into a venv anyway
+# TODO 🚨 Replace by environment access / maybe add a helper class to address this
+# extend the existing /scripts/convert_bat_env_to_python.py
 from config.myenv import MY_F_MYENV_PROMPT
 from config.colors import C_B, C_P, C_V, C_SC0, C_SC1, C_0, C_1
 

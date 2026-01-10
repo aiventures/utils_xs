@@ -92,6 +92,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 # shows unable to import. run  bat2py to convert the bat files into python constant files
 # nevertheless it will show up as error
 # best to install the utils into a venv anyway
+# TODO 🚨 Replace by environment access / maybe add a helper class to address this
+# extend the existing /scripts/convert_bat_env_to_python.py
 from config.myenv import MY_P_UTILS_BAT, MY_F_MYENV_CMD
 from config.colors import C_0, C_T, C_F, C_H, C_Q, C_PROG, C_E, C_I, C_SH
 
