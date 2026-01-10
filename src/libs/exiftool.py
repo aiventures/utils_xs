@@ -4,8 +4,8 @@ import os
 import json
 from json import JSONDecodeError
 
-# TODO 🔵 MAYBE ALSO CREATE A JSON TO IMPORT THESE ITEMS
-# for now transfer the variables defined in the env bat file to a python file myenf.py and place it into config
+# TODO 🚨 Replace by environment access / maybe add a helper class to address this
+# extend the existing /scripts/convert_bat_env_to_python.py
 from config.myenv import MY_CMD_EXIFTOOL
 from typing import Tuple, List, Dict, Optional, Union
 from pathlib import Path
@@ -18,6 +18,21 @@ from libs.geo import (
     F_OFFSET_ENV,
     F_METADATA_EXIF,
     F_METADATA_EXIF_ENV,
+)
+
+# custom print commands / note that MY_ENV_PRINT_SHOW_EMOJI and MY_ENV_PRINT_SHOW_EMOJI
+# need to be set accordingly in environment to reflect certain debug levels
+from libs.custom_print import (
+    print_json,
+    printd,
+    printe,
+    printw,
+    printt,
+    printh,
+    printi,
+    set_print_level,
+    printpy,
+    inputc,
 )
 
 # suffixes use in EXIFTOOL Comands
@@ -108,11 +123,12 @@ class ExifTool:
         f_exiftool: Optional[Union[str, Path]] = CMD_EXIFTOOL,
         f_gpx_merged: Optional[str] = F_GPX_MERGED,
         show_output: bool = True,
+        progress: int = 20,
     ):
         # do a check whether f_exiftool points to a file
         self._is_instanciated: bool = True
         if f_exiftool is None or not Path(f_exiftool).is_file():
-            print(f"{C_E}🚨 [ExifTool] class not having a correct exiftool executable{C_0}")
+            printe(f"[ExifTool] class not having a correct exiftool executable{C_0}")
             return
         self._exiftool = str(f_exiftool)
 
@@ -120,7 +136,7 @@ class ExifTool:
         if path is not None:
             _path = Path(path)
         if not _path.is_dir():
-            print(f"{C_E}🚨 [ImageOrganizer] No valid path {_path}{C_0}")
+            printe(f"[ImageOrganizer] No valid path {_path}{C_0}")
             self._is_instanciated = False
             return
         self._path: Path = _path.absolute()
@@ -135,6 +151,8 @@ class ExifTool:
         self._f_gpx_merged: Optional[Path] = None
         if f_gpx_merged is not None and _path.joinpath(f_gpx_merged).is_file():
             self._f_gpx_merged = _path.joinpath(f_gpx_merged)
+        # progress counter
+        self._progress = f"-progress{str(progress)}"
 
     @property
     def is_instanciated(self):
@@ -157,7 +175,7 @@ class ExifTool:
         }
 
         if not (isinstance(latlon, List) or isinstance(latlon, Tuple)):
-            print(f"{C_E}🚨 get_exiftool_reverse_geoinfo, passed params need to be list or tuple{C_0}")
+            printe(f"get_exiftool_reverse_geoinfo, passed params need to be list or tuple{C_0}")
             return
         lat = round(float(latlon[0]), 6)
         lon = round(float(latlon[1]), 6)
@@ -202,16 +220,16 @@ class ExifTool:
                 out["geo_info"] = geo_info
                 out["time_zone"] = time_zone
                 if show:
-                    print(
-                        f"\n{C_T}### OSM Coordinates {C_F}[{out['file']}] {C_Q}{out['lat_lon']}, {C_H}{geo_info} ({time_zone}){C_0}"
+                    printt(
+                        f"\n### OSM Coordinates {C_F}[{out['file']}] {C_Q}{out['lat_lon']}, {C_H}{geo_info} ({time_zone})"
                     )
             except (JSONDecodeError, IndexError) as e:
-                print(f"{C_E}🚨 Error occured during parsing OSM Coordinates [{latlon}], {e}")
+                printe(f"Error occured during parsing OSM Coordinates [{latlon}], {e}")
                 return None
 
         return out
 
-    def cmd_export_meta(self, recursive: bool = False) -> list:
+    def _cmd_export_meta(self, recursive: bool = False) -> list:
         """creates the exiftool command to export image data as json"""
         # command to export all exifdata in groups as json for given suffixes
         # progress is shown every 50 images
@@ -223,7 +241,7 @@ class ExifTool:
         exiftool_cmd = [self._exiftool]
         if recursive:
             exiftool_cmd.append("-r")
-        exiftool_cmd.extend(["-g", "-c", "'%.6f'", "-progress50", "-json"])
+        exiftool_cmd.extend(["-g", "-c", "'%.6f'", self._progress, "-json"])
         exiftool_cmd += SUFFIX_ARGS
         exiftool_cmd.append(str(self._path))
         return exiftool_cmd
@@ -231,17 +249,59 @@ class ExifTool:
     def export_metadata(
         self, f_metadata: str = F_METADATA_EXIF, f_metadata_env: str = F_METADATA_EXIF_ENV, recursive: bool = False
     ) -> List:
-        """creates a json containing all metadata exif alongside with an env file that
+        """creates a json containing all metadata exif alongside with an env file.
         will store the path to the metadata file
         if recursive flag is set it will also create metadata for all
         subfolders
+
         """
-        exif_cmd = self.cmd_export_meta(recursive)
-        print(f"{C_H}    Create Metadata: {C_PY}[{exif_cmd}]{C_0}")
+        exif_cmd = self._cmd_export_meta(recursive)
+        printh(f"   Create Metadata: {C_PY}[{exif_cmd}]")
         f_metadata_exif = self._path.joinpath(f_metadata)
         output = CmdRunner.run_cmd_and_stream(exif_cmd, f_metadata_exif)
         Persistence.save_txt(self._path / f_metadata_env, str(f_metadata_exif))
         return output
+
+    def _cmd_update_image_metadata(self, f_metadata_import: str, ext: str = "jpg") -> list:
+        """creates the exiftool command to update image image data from a json
+        command is (will use SourceFile attribute to pick the corresponding file )
+        exiftool -m -charset iptc=utf8 -codedcharacterset=utf8 -json=exiftool_import.json -progress1 *.*
+        """
+
+        exiftool_cmd = [self._exiftool]
+
+        exiftool_cmd.extend(
+            [
+                "-m",
+                "-charset",
+                f"iptc={self._encoding}",
+                f"-codedcharacterset={self._encoding}",
+                f"-json={f_metadata_import}",
+                self._progress,
+                f"*.{ext}",
+            ]
+        )
+        return exiftool_cmd
+
+    def update_image_metadata(self, f_metadata_import: str, ext: str = "jpg") -> bool:
+        """updates existing metadata from a metadata import file.
+        returns true if update was successful
+        command is (will use SourceFile attribute to pick the corresponding item )
+        exiftool -m -charset iptc=utf8 -codedcharacterset=utf8 -json=exiftool_import.json -progress1 *.*
+        """
+
+        path_exiftool_import_: Path = self._path.joinpath(f_metadata_import)
+        if not path_exiftool_import_.is_file():
+            printe(f"[ImageOrganizer] update_image_metadata [{str(path_exiftool_import_)}] is not a valid file.")
+            return False
+        exif_cmd: list = self._cmd_update_image_metadata(f_metadata_import, ext)
+        _cwd = os.getcwd()
+        os.chdir(self._path)
+        # run_cmd_and_print(cmd: List[str], decode: bool = True, show: bool = False, encoding: str = "latin1") -> list:
+        _ = CmdRunner.run_cmd_and_print(exif_cmd, show=True, c_err=C_F, c_std=C_H, prefix=False)
+        os.chdir(_cwd)
+
+        return True
 
     def read_geosync_from_env(self) -> str:
         """reads the offset string from the env file"""
@@ -273,7 +333,7 @@ class ExifTool:
             "geolocation",
             "-lang",
             self._language,
-            "-progress50",
+            self._progress,
             "-json",
         ] + SUFFIX_ARGS
 
@@ -307,7 +367,7 @@ class ExifTool:
         p_work = self._path
 
         if self._f_gpx_merged is None:
-            print(f"{C_H}No gpx file {self._f_gpx_merged} found, skip processing of creating gps based on gpx{C_0}")
+            printi(f"No gpx file {self._f_gpx_merged} found, skip processing of creating gps based on gpx")
             return
 
         # get the geosync offset (previously written), with a default of 00:00:00
@@ -317,23 +377,23 @@ class ExifTool:
         # exiftool -progress50 -json -jpg -tif ... -geosync=00:00:00 -geotag mygps.gpx <file/path>
 
         # exif_cmd = CMD_EXIFTOOL_GEOTAG.copy()
-        exif_cmd = [self._exiftool, "-progress50", "-json", f"-geosync={geosync}", "-geotag", self._f_gpx_merged]
+        exif_cmd = [self._exiftool, self._progress, "-json", f"-geosync={geosync}", "-geotag", self._f_gpx_merged]
         exif_cmd += SUFFIX_ARGS
         exif_cmd.append(str(p_work))
 
         # additional_params = [geosync, "-geotag", f_gpx_merged, str(p_work)]
         # exif_cmd.extend(additional_params)
-        # exif_cmd.append(additional_params)
+
         output = CmdRunner.run_cmd_and_print(exif_cmd)
 
         return output
 
     def get_original_datetime(self, f: Optional[Union[str, Path]]) -> Optional[str]:
-        """gets the original datetime of an image"""
+        """gets the original datetime extracting the SubSecDateTimeOriginal metadata of an image"""
         _f = Path(str(f))
         cwd = Path(os.getcwd())
         if f is None or not _f.is_file():
-            print(f"{C_E}🚨 [ExifTool] get_original_datetime, no valid file [{_f}]")
+            printe(f"[ExifTool] get_original_datetime, no valid file [{_f}]")
             return
 
         # run in path
@@ -352,13 +412,13 @@ class ExifTool:
         timestamp_image = None
 
         if not cmd_output:
-            print(f"{C_E}🚨 Exiftool command [{cmd}] failed.{C_0}")
+            printe(f"Exiftool command [{cmd}] failed.{C_0}")
             return None
         else:
             try:
                 timestamp_image = cmd_output[0]
                 self._print(f"{C_T}Got Timestamp from {C_F}[{f.name}] {C_H}[{timestamp_image}]{C_0}")
             except IndexError:
-                print(f"{C_E}🚨 [ExifTool] Couldn't parse timetamp from [{str(f)}]")
+                printe(f"[ExifTool] Couldn't parse timetamp from [{str(f)}]")
         os.chdir(cwd)
         return timestamp_image
