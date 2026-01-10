@@ -41,4 +41,3 @@ As python keeps its Environment within its runtime environment, there's a trick:
   * ~~`20251007` Add logic to extract locations~~
 * ✅ `20251006` ~~Script: Move Image files according to their date of creation into new folders using exiftool command~~  
      ~~`exiftool -r -g -json . > metadata.json` (20251005)~~ [`image_organizer.py`](src/scripts/image_organizer.py)
-

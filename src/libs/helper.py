@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Union, Tuple, Optional
+from typing import Any, Dict, List, Union, Tuple, Optional, Literal, LiteralString
 from zoneinfo import ZoneInfo
 from configparser import ConfigParser
 from dateutil import parser as date_parser
@@ -24,6 +24,9 @@ from bs4 import BeautifulSoup, Tag
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
+
+# TODO 🚨 Replace by environment access / maybe add a helper class to address this
+# extend the existing /scripts/convert_bat_env_to_python.py
 from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
 
 CMD_EXIFTOOL = MY_CMD_EXIFTOOL
@@ -243,6 +246,68 @@ class Helper:
 
         return offset_out
 
+    @staticmethod
+    def get_file_dict(
+        fp: str | Path,
+        extensions: Optional[str] = None,
+        read_content: bool = False,
+        get_num_files: bool = True,
+        as_list: bool = False,
+    ) -> Optional[Union[list, dict, tuple]]:
+        """reading files contents for a given path"""
+        fp_ = Path(fp)
+        if not fp_.is_dir():
+            logger.error(f"Path [{str(fp)}] is not a valid path")
+            return None
+        # TODO 🔵 add filter
+        extensions_ = [] if extensions is None else extensions
+        num_files = 0
+
+        # global exif_info
+        subpath_dict = {}
+
+        logger.debug("READING FILES")
+        # functions to decode
+        for subpath, _, files in os.walk(fp):
+            p_subpath = Path(subpath).absolute()
+
+            file_list = []
+            if read_content:
+                for f in files:
+                    pf = Path.joinpath(p_subpath, f)
+                    filetype = pf.suffix[1:]
+                    # only process if in filter
+                    if bool(extensions_) and not filetype in extensions_:
+                        continue
+                    value = {"file": f, "content": "not_supported"}
+                    if filetype == "txt":
+                        value["content"] = Persistence.read_txt_file(pf, comment_marker=None)
+                    # TODO 🔵 support other filetypes such as json yaml ... others
+                    file_list.append(value)
+            else:
+                if len(extensions_) == 0:
+                    file_list = files
+                else:
+                    file_list = [f for f in files for ext in extensions if ext in Path(f).suffix]
+            num_files += len(file_list)
+            subpath_dict[str(p_subpath)] = file_list
+
+        out = None
+        # flatten to a list
+        if as_list:
+            out = []
+            for p, filelist in subpath_dict.items():
+                for file in filelist:
+                    f = file["file"] if read_content else file
+                    out.append(os.path.join(p, f))
+        else:
+            out = subpath_dict
+
+        if get_num_files:
+            return (out, num_files)
+        else:
+            return out
+
 
 class CmdRunner:
     """Running Commands"""
@@ -273,7 +338,15 @@ class CmdRunner:
             return False
 
     @staticmethod
-    def run_cmd_and_print(cmd: List[str], decode: bool = True, show: bool = False, encoding: str = "latin1") -> list:
+    def run_cmd_and_print(
+        cmd: List[str],
+        decode: bool = True,
+        show: bool = False,
+        encoding: str = "latin1",
+        c_err: str = C_E,
+        c_std: str = C_PY,
+        prefix: bool = True,
+    ) -> list:
         """
         Run a command and print both stdout and stderr to the console in real time.
 
@@ -285,6 +358,12 @@ class CmdRunner:
             bool: True if the command succeeded, False otherwise.
         """
         out = []
+        prefix_out = "[CMD] "
+        prefix_err = "[ERR] "
+        if prefix is False:
+            prefix_out = ""
+            prefix_err = ""
+
         try:
             # encoding: latin1 / cp1252 (windows) / utf-8
             process = subprocess.Popen(
@@ -307,14 +386,14 @@ class CmdRunner:
                         _s = _s.encode("latin1").decode("utf-8")
                     out.append(_s)
                     if show:
-                        print(f"{C_PY}[CMD] {_s}{C_0}")
+                        print(f"{c_std}{prefix_out}{_s}{C_0}")
                 if stderr_line:
                     _s = stderr_line.strip()
                     if decode:
                         _s = _s.encode("latin1").decode("utf-8")
                     out.append(_s)
                     if show:
-                        print(f"{C_E}[ERR] {_s}{C_0}")
+                        print(f"{c_err}{prefix_err}{_s}{C_0}")
 
                 if not stdout_line and not stderr_line and process.poll() is not None:
                     break
@@ -328,6 +407,113 @@ class CmdRunner:
 
 class Persistence:
     """persistence class"""
+
+    @staticmethod
+    def copy_recursive(p_from: str, p_to: str):
+        """copy a coplete path to a target path"""
+        # TODO 🟡 refine copy_recursive method
+        for root, _, files in os.walk(p_from):
+            p_relative = os.path.relpath(root, p_from)
+            p_target = os.path.join(p_to, p_relative)
+            os.makedirs(p_target, exist_ok=True)
+
+            for f in files:
+                shutil.copy2(os.path.join(root, f), os.path.join(p_target, f))
+
+    @staticmethod
+    def relocate_file(
+        f_from: Union[Path, str],
+        f_to: Optional[Union[Path, str]] = None,
+        action: Literal["move", "copy", "delete", "rename"] = "move",
+        new_filename: Optional[str] = None,
+        overwrite: bool = True,
+        suffix: Optional[str] = None,
+        prefix: Optional[str] = None,
+        new_filetype: Optional[str] = None,
+    ) -> Optional[Path]:
+        """convenience method to change filename, move, or copy of a file"""
+        # TODO 🔵 alter_file also allow to add pre and postfix and change of suffix
+
+        f_from_: Path = Path(f_from).absolute()
+        if not f_from_.is_file():
+            logger.warning(f"File [{str(f_from)}] is invalid")
+            return
+
+        # delete
+        if action == "delete":
+            f_from.unlink()
+            return f_from_
+
+        p_from_: Path = f_from_.parent
+
+        # get the target paths and files
+        f_to_: Optional[Union[Path, str]] = None if f_to is None else Path(f_to)
+        if f_to_ is None:
+            return
+        f_trg_: Optional[Path] = None
+        # make some cases
+        if f_to_.is_dir():
+            # if there is a new name supplied use this one
+            new_name_ = f_from_.name if new_filename is None else new_filename
+            f_trg_ = f_to_.absolute().joinpath(new_name_)
+        elif f_to_.is_file():
+            # if there is a new filename use this
+            f_trg_ = f_to_.absolute()
+            if new_filename is not None:
+                f_trg_ = f_to_.parent.joinpath(new_filename)
+        # no valied file object was passed further analyze the path
+        else:
+            # is not a file object, assume that it's a filename and
+            # original path will be used
+            if not f_to_.is_absolute():
+                f_trg_ = f_from_.joinpath(f_to_)
+            # if there is an absolute path check whether there is a bvalid root path
+            else:
+                if not f_to_.parent.is_dir():
+                    logger.warning(f"New absolute target file [{str(f_to_)}] has no valid parent path")
+                    return
+                f_trg_ = f_to_.absolute()
+            if new_filename is not None:
+                f_trg_ = f_trg_.parent.joinpath(new_filename)
+
+            f_trg_ = p_from_.joinpath(f_to.name)
+
+        # change the filename
+        old_filename = f_trg_.name
+        new_filename: str = f_trg_.stem
+        new_suffix = f_trg_.suffix
+        suffix = f_trg_.suffix
+        if suffix is not None:
+            new_filename = f"{new_filename}{suffix}"
+        if prefix is not None:
+            new_filename = f"{prefix}{new_filename}"
+        if new_filetype is not None:
+            new_suffix = f".{suffix}"
+        new_filename = f"{new_filename}{new_suffix}"
+        if old_filename != new_filename:
+            f_trg_ = f_trg_.parent.joinpath(new_filename)
+
+        # TODO 🔵 change name / prefixes suffixes, etc / maybe also create a backup file if a backup suffix is provided
+
+        if f_from_ == f_trg_:
+            logger.info(f"File Target Action Identical [{action}] ({str(f_from_)})")
+            return
+
+        if action in ["move", "rename"]:
+            if overwrite:
+                f_from_.replace(f_trg_)
+            else:
+                try:
+                    f_from_.rename(f_trg_)
+                except FileExistsError:
+                    logger.info(f"File Exists, [{action}] ({str(f_from_)}) -> ({str(f_trg_)})")
+                    return
+        elif action == "copy":
+            if f_to_.is_file() and overwrite is False:
+                logger.info(f"File Exists, [{action}] ({str(f_from_)}) -> ({str(f_trg_)})")
+                return
+            shutil.copy2(f_from_, f_trg_)
+        return f_trg_
 
     @staticmethod
     def read_txt_file(filepath, encoding="utf-8", comment_marker="#", skip_blank_lines=True) -> list:
