@@ -197,8 +197,9 @@ from config.colors import C_0, C_B, C_E, C_F, C_H, C_I, C_L, C_P, C_PY, C_Q, C_S
 
 # TODO 🚨 Replace by environment access / maybe add a helper class to address this
 # extend the existing /scripts/convert_bat_env_to_python.py
-from config.myenv import MY_P_PHOTO_DUMP, MY_P_PHOTO_OUTPUT_ROOT, TMP_GPS_TEST_FILES
+from config.myenv import MY_P_PHOTO_DUMP, MY_P_PHOTO_OUTPUT_ROOT
 
+# TODO 🚨 create a waypoint file from jpg files
 
 # custom print commands / note that MY_ENV_PRINT_SHOW_EMOJI and MY_ENV_PRINT_SHOW_EMOJI
 # need to be set accordingly in environment to reflect certain debug levels
@@ -320,6 +321,7 @@ FILETYPE_IMG: list = ["jpg", "jpeg", "png"]
 FILETYPE_TMP: list = ["env", "tmp", "tif", "tiff", "dop"]
 FILES_DO_NOT_MOVE: list = ["metadata.json", "exiftool_import.json", "gps.jpg", "gpx_merged.gpx"]
 FILES_DELETE: list = ["timestamp_gps.json", "timestamp_camera.json"]
+FILESUFFIX_DO_NOT_MOVE = ["url"]
 
 # Collected Geo Information alongside with origin info
 GEOTRACK_INFO: Dict = {
@@ -1238,7 +1240,6 @@ class ImageOrganizer:
             # _gps_track: dict = _img_metadata.get(GPS_TRACK)
             _image_geo_info: dict = _img_metadata.get(IMAGE_GEO_INFO)
             _image_reverse_geo_info = _img_metadata.get(IMAGE_REVERSE_GEO_INFO)
-            # print_json(_image_reverse_geo_info, f"HUGO {C_F}[{_filename}]", True, "DEBUG")
 
             # TODO 🟡 SET DEFAULT KEYWORDS
             _keywords: Optional[list[str]] = None
@@ -2210,7 +2211,7 @@ class ImageOrganizer:
 
     @staticmethod
     def cleanup_image_folder(
-        p_root: Optional[str | Path], execute: bool = False, prompt_input: bool = True
+        p_root: Optional[str | Path], execute: bool = False, prompt_input: bool = True, revert: bool = False
     ) -> Optional[bool]:
         """cleans up an image folder"""
         execute_ = execute
@@ -2220,17 +2221,22 @@ class ImageOrganizer:
         create_paths: list[Path] = []
         for subpath, _, files in os.walk(p_root_):
             subpath_: Path = Path(subpath).absolute()
-            # only process direct children of root path
-            # TODO 🔵 also allow to move back from current folder to the root folder / set a folder
-            # TODO 🔵 write a function that will undo move of files into subdirectories back to a root path
-            if subpath_.parent != p_root_:
+            # an undo version to reverse file in RAW and AUX back to parent folder
+            if revert is True:
+                if subpath_.name in ["10_RAW", "20_AUX"]:
+                    files_relocate.extend([[subpath_.joinpath(f), subpath_.parent] for f in files])
                 continue
-            subpath_raw = subpath_.joinpath("10_RAW")
-            subpath_aux = subpath_.joinpath("20_AUX")
+            else:
+                if subpath_ != p_root_:
+                    continue
+            subpath_raw = subpath_.joinpath("10_RAW").absolute()
+            subpath_aux = subpath_.joinpath("20_AUX").absolute()
 
             for f in files:
                 f_: Path = subpath_.joinpath(f)
-                if f.lower() in FILES_DO_NOT_MOVE:
+                if len(f_.suffix) > 0 and f_.suffix[1:] in FILESUFFIX_DO_NOT_MOVE:
+                    continue
+                elif f.lower() in FILES_DO_NOT_MOVE:
                     continue
                 elif f.lower() in FILES_DELETE:
                     files_delete.append(f_)
@@ -2244,16 +2250,25 @@ class ImageOrganizer:
                     files_relocate.append([f_, subpath_raw])
                     if subpath_raw not in create_paths:
                         create_paths.append(subpath_raw)
-                files_relocate.append([f_, subpath_aux])
-                if subpath_raw not in create_paths:
-                    create_paths.append(subpath_raw)
+                else:
+                    files_relocate.append([f_, subpath_aux])
+                    if subpath_aux not in create_paths:
+                        create_paths.append(subpath_aux)
 
-        printt(f"### Cleanup Folder {C_F}[{str(p_root)}")
+        printt(f"\n### Cleanup Folder {C_F}[{str(p_root)}")
         printt(f"    ♻️ Delete {C_PY}[{len(files_delete)}]")
+        for f in files_delete:
+            printd(f"    *  {str(f)}")
         printt(f"    ➡️ Move   {C_PY}[{len(files_relocate)}]")
+        for f in files_relocate:
+            printd(f"    *  {str(f[0])}")
+
+        if (len(files_delete) + len(files_relocate)) == 0:
+            printi(f"Nothing to clean up in folder {C_F}[{str(p_root)}]")
+            return
 
         if prompt_input and execute:
-            execute_ = True if inputc("Comtinue with folder cleanup (y)").lower() == "y" else False
+            execute_ = True if str(inputc("Comtinue with folder cleanup (y)").lower()) == "y" else False
 
         if execute_ is False:
             return
@@ -2354,21 +2369,29 @@ class ImageOrganizer:
 
             new_file_name: str = f"{date_path}_{image_number}{file.suffix}"
             # skip files that were renamed already
-            if f == new_file_name:
+            if file.name == new_file_name:
                 continue
-            out.append(f, os.path.join(_current_path, new_file_name))
+
+            out.append([f, os.path.join(_current_path, new_file_name)])
             Helper.show_progress(
                 idx,
                 num_files,
                 f"Extracting Image Numbers ✅{str(len(out)).zfill(3)} ❌{str(len(_failed_files)).zfill(3)})",
             )
 
+        if len(out) == 0:
+            printi(f"No files to rename in path {C_F}[{str(p_root)}]")
+            return
+
         printt("### RENAME FILES")
         for f_old, f_new in out:
-            printpy(f"* {f_old:<50}=>{C_S}{Path(f_new).name}")
+            print(f"{C_PY}* {str(f_old):<70}=> {C_S}{Path(f_new).name}")
+
+        if len(out) == 0:
+            printh(f"No files to rename, path {C_F}[{str(p_root)}]")
 
         if prompt_input and execute:
-            execute_ = True if inputc("Comtinue with moving files (y)").lower() == "y" else False
+            execute_ = True if str(inputc("Continue with renaming files (y)").lower()) == "y" else False
 
         if execute_ is False:
             return
@@ -2381,7 +2404,11 @@ class ImageOrganizer:
 
     @staticmethod
     def run_image_actions_recursive(
-        p_root: str, action: Literal["rename", "cleanup"] = "rename", execute: bool = False, prompt_input: bool = True
+        p_root: str,
+        action: Literal["rename", "cleanup"] = "rename",
+        execute: bool = False,
+        prompt_input: bool = True,
+        revert: bool = False,
     ) -> Optional[List[tuple]]:
         """run actions for first level folders"""
         p_root_ = Path(p_root).absolute()
@@ -2393,12 +2420,13 @@ class ImageOrganizer:
             # only process direct children of root path
             if subpath_.parent != p_root_:
                 continue
+
             if action == "rename":
                 rename_images_ = ImageOrganizer.rename_images(subpath, execute, prompt_input)
-                if isinstance(rename_images, list):
+                if isinstance(rename_images_, list):
                     rename_images.extend(rename_images_)
             elif action == "cleanup":
-                ImageOrganizer.cleanup_image_folder(subpath, execute, prompt_input)
+                ImageOrganizer.cleanup_image_folder(subpath, execute, prompt_input, revert)
 
         return rename_images
 
@@ -2464,7 +2492,7 @@ class ImageOrganizer:
                 yyyymmdd: str = None
                 # get the first image file occurence and extract the date
                 for f in files:
-                    if len(f.suffix) == 0 or (f.suffix[1:] not in IMAGE_SUFFIXES):
+                    if len(f.suffix) == 0 or ((f.suffix[1:]).lower() not in IMAGE_SUFFIXES):
                         continue
                     # try to get a date from the first valid occurence
                     timestamp_image: Optional[str] = exiftool_.get_original_datetime(f)
@@ -2484,26 +2512,30 @@ class ImageOrganizer:
                     files_by_date_dict[yyyymmdd] = files_by_date
                 files_by_date.extend(files)
 
-        rename_files: list = []
+        move_files: list = []
         for date_s, files in files_by_date_dict.items():
             datetime_target_path = p_to_.joinpath(date_s)
             if execute_:
                 datetime_target_path.mkdir(parents=False, exist_ok=True)
 
-            printd(f"Moving {str(len(files)).zfill(3)}] to folder [{str(datetime_target_path)}]")
+            printd(f"Moving [{str(len(files)).zfill(3)}] files to folder [{str(datetime_target_path)}]")
 
             for f in files:
-                rename_files.append((f, datetime_target_path))
+                move_files.append((f, datetime_target_path))
+
+        if len(move_files) == 0:
+            printi(f"No files to move from {C_F}[{str(p_from)}]")
+            return []
 
         if prompt_input and execute:
-            execute_ = True if inputc("Comtinue with moving files (y)").lower() == "y" else False
+            execute_ = True if str(inputc("Comtinue with moving files (y)").lower()) == "y" else False
 
         if execute_ is False:
             return []
 
-        for f_src, f_trg in rename_files:
+        for f_src, f_trg in move_files:
             Persistence.relocate_file(f_src, f_trg)
-        return rename_files
+        return move_files
 
     @staticmethod
     def build_arg_parser() -> argparse.ArgumentParser:
@@ -2544,10 +2576,20 @@ class ImageOrganizer:
 
         # used in main / OK
         parser.add_argument(
-            "--action_cleanup",
+            "--action_cleanup_images",
+            "--action-cleanup-images",
             "-clean",
             action="store_true",
             help="CleanUp Image Folder",
+        )
+
+        # used in main / OK
+        parser.add_argument(
+            "--action_cleanup_images_undo",
+            "--action-cleanup-images-undo",
+            "-revert",
+            action="store_true",
+            help="CleanUp Image Folder Undo (move images back)",
         )
 
         # part of ImageOrganizer Constructor
@@ -2596,6 +2638,7 @@ class ImageOrganizer:
             "--p-to",
             "--p_target",
             "--p-target",
+            "-trg",
             "-to",
             "-out",
             type=str,
@@ -2726,14 +2769,6 @@ class ImageOrganizer:
             help="Language Code (Used for ExifTool, default: de)",
         )
 
-        # encoding used for exiftool commands / note: it should be latin instead of utf8
-        parser.add_argument(
-            "--encoding",
-            type=str,
-            default="latin",
-            help="Encoding (Used for ExifTool, default: latin)",
-        )
-
         # part of ImageOrganizer Constructor
         parser.add_argument(
             "--do_not_show_exiftool_output",
@@ -2827,6 +2862,9 @@ def main() -> None:
     prompt_: bool = not args.auto_confirm
     execute: bool = not args.dry_run
     recursive: bool = args.recursive
+    revert_cleanup: bool = args.action_cleanup_images_undo
+    if revert_cleanup:
+        args.action_cleanup_images = True
 
     # set print level / default is info
     if os.environ.get("MY_PRINT_LEVEL") is None:
@@ -2853,16 +2891,16 @@ def main() -> None:
         if args.action_rename_images:
             ImageOrganizer.run_image_actions_recursive(args.p_source, "rename", execute, prompt_)
             return
-        elif args.action_cleanup:
-            ImageOrganizer.run_image_actions_recursive(args.p_source, "cleanup", execute, prompt_)
+        elif args.action_cleanup_images:
+            ImageOrganizer.run_image_actions_recursive(args.p_source, "cleanup", execute, prompt_, revert_cleanup)
             return
     # rename or clean up everything under a given folder
     else:
         if args.action_rename_images:
             ImageOrganizer.rename_images(args.p_source, execute, prompt_)
             return
-        elif args.action_cleanup:
-            ImageOrganizer.cleanup_image_folder(args.p_source, execute, prompt_)
+        elif args.action_cleanup_images:
+            ImageOrganizer.cleanup_image_folder(args.p_source, execute, prompt_, revert_cleanup)
             return
 
     # create the Image organizer
