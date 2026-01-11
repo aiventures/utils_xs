@@ -184,7 +184,7 @@ from datetime import timezone
 
 # import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Literal
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, Tag
@@ -315,17 +315,11 @@ from libs.geo_meta_transformer import GeoMetaTransformer
 MY_P_PHOTO_DUMP = Path(MY_P_PHOTO_DUMP)
 P_PHOTO_OUTPUT_ROOT = Path(MY_P_PHOTO_OUTPUT_ROOT)
 
-F_TMP_FILES = [F_TIMESTAMP_CAMERA, F_TIMESTAMP_GPS, F_OFFSET_ENV, F_OFFSET_SECS_ENV, F_OSM_ENV]
-
-# # GEOREVERSE STRUCTURE
-# GEOREVERSE_METADATA_JSON: Dict = {
-#     "idx": 1,
-#     "file": None,
-#     "lat_lon": None,
-#     "geo_reverse": {},
-#     "geo_info": None,
-#     "time_zone": None,
-# }
+FILETYPE_RAW: list = ["arw", "dng", "raf"]
+FILETYPE_IMG: list = ["jpg", "jpeg", "png"]
+FILETYPE_TMP: list = ["env", "tmp", "tif", "tiff", "dop"]
+FILES_DO_NOT_MOVE: list = ["metadata.json", "exiftool_import.json", "gps.jpg", "gpx_merged.gpx"]
+FILES_DELETE: list = ["timestamp_gps.json", "timestamp_camera.json"]
 
 # Collected Geo Information alongside with origin info
 GEOTRACK_INFO: Dict = {
@@ -2214,121 +2208,76 @@ class ImageOrganizer:
         # TODO 🔵 add additional parameter for update
         return exiftool_.update_image_metadata(self._f_exiftool_import, "jpg")
 
-    # def move_files_by_date(self, output_root: Path = None) -> List[Path]:
-    #     """
-    #     Move image files from input folder to dated subfolders in output root based on metadata keys.
+    @staticmethod
+    def cleanup_image_folder(
+        p_root: Optional[str | Path], execute: bool = False, prompt_input: bool = True
+    ) -> Optional[bool]:
+        """cleans up an image folder"""
+        execute_ = execute
+        p_root_ = Path(p_root).absolute()
+        files_delete: list = []
+        files_relocate: list = []
+        create_paths: list[Path] = []
+        for subpath, _, files in os.walk(p_root_):
+            subpath_: Path = Path(subpath).absolute()
+            # only process direct children of root path
+            # TODO 🔵 also allow to move back from current folder to the root folder / set a folder
+            # TODO 🔵 write a function that will undo move of files into subdirectories back to a root path
+            if subpath_.parent != p_root_:
+                continue
+            subpath_raw = subpath_.joinpath("10_RAW")
+            subpath_aux = subpath_.joinpath("20_AUX")
 
-    #     Uses the last four digits extracted from filenames to find the corresponding date folder.
+            for f in files:
+                f_: Path = subpath_.joinpath(f)
+                if f.lower() in FILES_DO_NOT_MOVE:
+                    continue
+                elif f.lower() in FILES_DELETE:
+                    files_delete.append(f_)
+                    continue
+                suffix = "unknown" if len(f_.suffix) == 0 else (f_.suffix[1:]).lower()
+                if suffix in FILETYPE_IMG:
+                    continue
+                elif suffix in FILETYPE_TMP:
+                    files_delete.append(f_)
+                elif suffix in FILETYPE_RAW:
+                    files_relocate.append([f_, subpath_raw])
+                    if subpath_raw not in create_paths:
+                        create_paths.append(subpath_raw)
+                files_relocate.append([f_, subpath_aux])
+                if subpath_raw not in create_paths:
+                    create_paths.append(subpath_raw)
 
-    #     Args:
-    #         input_folder (Path): Folder containing image files to move.
-    #         output_root (Path): Root folder where dated folders exist or will be created.
-    #         file_dict (Dict[str, dict]): Dictionary mapping keys to image metadata.
+        printt(f"### Cleanup Folder {C_F}[{str(p_root)}")
+        printt(f"    ♻️ Delete {C_PY}[{len(files_delete)}]")
+        printt(f"    ➡️ Move   {C_PY}[{len(files_relocate)}]")
 
-    #     Returns:
-    #         List[str]: List of Paths that were created
-    #     """
+        if prompt_input and execute:
+            execute_ = True if inputc("Comtinue with folder cleanup (y)").lower() == "y" else False
 
-    #     _output_root = Path.cwd() if output_root is None else output_root
+        if execute_ is False:
+            return
 
-    #     if _output_root.is_dir() is False:
-    #         printe("[ImageOrganizer] Invalid output folder [{_output_root}]")
-    #         return
+        # create subfolders
+        for _p in create_paths:
+            _p.mkdir(parents=True, exist_ok=True)
 
-    #     # get exiftool instance
-    #     exiftool = self.exiftool
-    #     if exiftool is None:
-    #         printe("[ImageOrganizer] move_files_by_date Exiftool was not instanciated")
-    #         return
+        for f in files_delete:
+            Persistence.relocate_file(f, action="delete")
 
-    #     printt("### 🔀[ImageOrganizer] Move Files .... ")
+        for f in files_relocate:
+            Persistence.relocate_file(f_src=f[0], f_trg=f[1], action="move")
 
-    #     _input_folder = self._path
-    #     _output_root = _output_root.absolute()
-
-    #     cwd = os.getcwd()
-    #     files = list(_input_folder.glob("*.*"))
-    #     file_names = [Path(f).name for f in files]
-    #     num_files = len(file_names)
-    #     errors = []
-    #     out = []
-
-    #     os.chdir(str(_input_folder))
-    #     image_dict = {}
-    #     num_files: int = len(file_names)
-    #     num_skipped_files: int = 0
-    #     for idx, f in enumerate(file_names, start=1):
-    #         Helper.show_progress(idx, num_files, "Process Files")
-    #         _f = Path(f)
-    #         _suffix = _f.suffix[1:]
-    #         if _suffix not in IMAGE_SUFFIXES:
-    #             num_skipped_files += 1
-    #             continue
-    #         # TODO 🟡 CleanUp
-    #         # _cmd = cmd.copy()
-    #         # _cmd.append(_f)
-    #         img_creation_date = exiftool.get_original_datetime(f)
-    #         if img_creation_date is None:
-    #             num_skipped_files += 1
-    #             continue
-    #         image_dict[str(f)] = img_creation_date
-
-    #     # collect all files to be moved and paths to be created
-    #     move_dict: Dict[str, List] = {}
-    #     dates = []
-    #     num_move_files = 0
-    #     for _f_img, _date in image_dict.items():
-    #         _datetime = Helper.get_datetime_from_format_string(
-    #             _date, time_format="%Y:%m:%d %H:%M:%S.%f", timezone_s="Europe/Berlin"
-    #         )
-    #         _datetime_yyyymmdd = _datetime.strftime("%Y%m%d")
-    #         if not _datetime_yyyymmdd in dates:
-    #             dates.append(_datetime_yyyymmdd)
-    #             move_dict[_datetime_yyyymmdd] = []
-    #         move_dict[_datetime_yyyymmdd].append(_f_img)
-    #         num_move_files += 1
-
-    #     # print(json.dumps(move_dict, indent=4, ensure_ascii=False))
-
-    #     # create paths if not existing
-    #     for _date in dates:
-    #         _p_target = _output_root.joinpath(_date)
-    #         _p_target.mkdir(parents=True, exist_ok=True)
-
-    #     num_files = len(move_dict)
-    #     moved_files = 0
-
-    #     for date, files in move_dict.items():
-    #         if len(files) == 0:
-    #             continue
-    #         path_date = _output_root.joinpath(date)
-    #         out.append(path_date)
-    #         for file in files:
-    #             f_from = _input_folder.joinpath(file)
-    #             f_target = path_date.joinpath(file)
-    #             try:
-    #                 shutil.move(f_from, f_target)
-    #             except Exception:
-    #                 errors.append(str(f_from))
-    #             moved_files += 1
-    #             Helper.show_progress(moved_files, num_move_files, "Move Files   ")
-    #     os.chdir(cwd)
-    #     return out
-
-    # def action_move_images(self, p_to: Optional[Union[Path, str]] = None) -> Optional[List[Path]]:
-    #     """Move images from a source to a target folder, split into date folders"""
-    #     # Path(args.p_source).absolute()
-    #     p_to = Path(p_to).absolute()
-    #     p_image_folders = self.move_files_by_date(p_to)
-    #     printh(f"📂 [ImageOrganizer] Created [{len(p_image_folders)}] Paths")
-    #     p_image_folders = None if len(p_image_folders) == 0 else p_image_folders
-    #     return p_image_folders
+        return True
 
     @staticmethod
-    def rename_images(p_root: str, execute: bool = False, prompt_input: bool = True) -> List[tuple]:
+    def rename_images(
+        p_root: Union[str, Path], execute: bool = True, prompt_input: bool = True
+    ) -> Optional[List[tuple]]:
         """Rename Raw and unnamed Images according to the lowermost path as prefix
         returns old name / new name as tuple
         """
+        execute_ = execute
         out = []
         regex_date_pattern = re.compile(r"\d{8}")  # exactly 8 digits
         # matching exactly 8 digits (date) at the start
@@ -2377,15 +2326,6 @@ class ImageOrganizer:
 
         num_files = len(file_list)
 
-        # TODO 🚨 Clean UP
-        # print(json.dumps({"x": file_list}, indent=4))
-        # print(file_list, num_files)
-        # get a dict grouped by same file name
-        # same_files_dict = {}
-        # get a dict that will contain the root paths as key
-        # to be used for replacement the file name
-        # datepaths_dict = {}
-
         # for each file, try to check whether there is an index (4digit number somewhere in the file
         # name and a valid path containing an 8 digit path somewhere
         _last_wrong_path = None
@@ -2427,37 +2367,40 @@ class ImageOrganizer:
         for f_old, f_new in out:
             printpy(f"* {f_old:<50}=>{C_S}{Path(f_new).name}")
 
-        if execute is False:
+        if prompt_input and execute:
+            execute_ = True if inputc("Comtinue with moving files (y)").lower() == "y" else False
+
+        if execute_ is False:
             return
 
-        # TODO 🚨 create rename method
+        num_files = len(out)
+        for idx, (f_old, f_new) in enumerate(out):
+            Helper.show_progress(idx, num_files)
+            Persistence.relocate_file(f_old, f_new, action="rename")
+        return out
 
-        run = True
-        if prompt_input:
-            input_ = inputc("Rename files (y)")
-            if input_.lower() != "y":
-                run = False
+    @staticmethod
+    def run_image_actions_recursive(
+        p_root: str, action: Literal["rename", "cleanup"] = "rename", execute: bool = False, prompt_input: bool = True
+    ) -> Optional[List[tuple]]:
+        """run actions for first level folders"""
+        p_root_ = Path(p_root).absolute()
+        rename_images = []
 
-        if run is False:
-            return
+        # functions to decode
+        for subpath, _, _ in os.walk(p_root):
+            subpath_ = Path(subpath).absolute()
+            # only process direct children of root path
+            if subpath_.parent != p_root_:
+                continue
+            if action == "rename":
+                rename_images_ = ImageOrganizer.rename_images(subpath, execute, prompt_input)
+                if isinstance(rename_images, list):
+                    rename_images.extend(rename_images_)
+            elif action == "cleanup":
+                ImageOrganizer.cleanup_image_folder(subpath, execute, prompt_input)
 
-        # TODO 🚨 RENAME FIles
-
-        # print("### NEW FILE", file.name, "=>", new_file_name)
-        # same_files_list: list = same_files_dict.get(stem, [])
-        # same_files_list.append(f)
-        # same_files_dict[stem] = same_files_list
-        # date_path = extract_lowermost_date_path(f)
-        # if date_path is None:
-        #     date_path = "NO_DATE_PATH"
-        #     # date_path_list: list = datepaths_dict.get(date_path, [])
-        #     # date_path_list.append(f)
-        #     # datepaths_dict[date_path] = date_path_list
-        # print(json.dumps(datepaths_dict, indent=4))
-
-        # process all items
-
-        pass
+        return rename_images
 
     @staticmethod
     def move_images(
@@ -2469,7 +2412,8 @@ class ImageOrganizer:
         encoding="latin",
         language: str = "de",
     ) -> List[tuple]:
-        """bundles similar files in a source folder (recursively) and will move them to a Date Based subfolder resifding in target folder"""
+        """bundles similar files in a source folder (recursively) and will move them to a Date Based subfolder residing in target folder"""
+        execute_ = execute
         cwd_: Path = Path.cwd()
         p_from_: Path = cwd_ if p_from is None else Path(str(p_from))
         p_to_: Path = cwd_ if p_to is None else Path(str(p_to))
@@ -2494,6 +2438,7 @@ class ImageOrganizer:
         num_files_total: int = 0
         for f in file_list:
             file = Path(f).absolute()
+            # TODO 🔵 also move to subpaths if original files are nested
             parent_path = str(file.parent)
             stem = file.stem
             # suffix = file.suffix[1:]
@@ -2531,7 +2476,6 @@ class ImageOrganizer:
                     break
                 num_files += len(files)
                 if yyyymmdd is None:
-                    # TODO ❌ Continue here
                     files_not_matched.extend(files)
                     continue
                 files_by_date = files_by_date_dict.get(yyyymmdd)
@@ -2540,31 +2484,26 @@ class ImageOrganizer:
                     files_by_date_dict[yyyymmdd] = files_by_date
                 files_by_date.extend(files)
 
+        rename_files: list = []
         for date_s, files in files_by_date_dict.items():
             datetime_target_path = p_to_.joinpath(date_s)
+            if execute_:
+                datetime_target_path.mkdir(parents=False, exist_ok=True)
+
             printd(f"Moving {str(len(files)).zfill(3)}] to folder [{str(datetime_target_path)}]")
 
-    # TODO 🟡 Provide Methods to recursively update metadata and move images
+            for f in files:
+                rename_files.append((f, datetime_target_path))
 
-    # @staticmethod
-    # def action_update_metadata_recursive(args: argparse.Namespace) -> bool | None:
-    #     """Update the exiftool metadata json in all child folder"""
-    #     if args.action_meta_json_update_recursive is not True:
-    #         return None
-    #     p_root = args.p_source
-    #     if p_root is None:
-    #         outp = input(
-    #             f"{C_Q}Enter source root folder path for update (default {P_PHOTO_OUTPUT_ROOT}): "
-    #         ).strip()
-    #         p_root = Path(outp) if outp else P_PHOTO_OUTPUT_ROOT
-    #     else:
-    #         p_root = Path(p_root)
+        if prompt_input and execute:
+            execute_ = True if inputc("Comtinue with moving files (y)").lower() == "y" else False
 
-    #     if not p_root.exists() or not p_root.is_dir():
-    #         printe("Output folder {p_root} not found or invalid.")
-    #         return False
-    #     ImageOrganizer.update_metadata_recursive(p_root)
-    #     return True
+        if execute_ is False:
+            return []
+
+        for f_src, f_trg in rename_files:
+            Persistence.relocate_file(f_src, f_trg)
+        return rename_files
 
     @staticmethod
     def build_arg_parser() -> argparse.ArgumentParser:
@@ -2592,7 +2531,7 @@ class ImageOrganizer:
             "--action_move_images",
             "--action-move-images",
             action="store_true",
-            help="Move Images from a sourc folder to a target folder",
+            help="Move Images from a source folder to a target folder",
         )
 
         # used in main / OK
@@ -2600,9 +2539,18 @@ class ImageOrganizer:
             "--action_rename_images",
             "--action-rename-images",
             action="store_true",
-            help="Rename Images according to fodler containing date in path",
+            help="Rename Images according to foller containing date in path",
         )
 
+        # used in main / OK
+        parser.add_argument(
+            "--action_cleanup",
+            "-clean",
+            action="store_true",
+            help="CleanUp Image Folder",
+        )
+
+        # part of ImageOrganizer Constructor
         parser.add_argument(
             "--action_prepare_meta",
             "--action-prepare-meta",
@@ -2646,6 +2594,8 @@ class ImageOrganizer:
             "--p-output",
             "--p_to",
             "--p-to",
+            "--p_target",
+            "--p-target",
             "-to",
             "-out",
             type=str,
@@ -2776,6 +2726,14 @@ class ImageOrganizer:
             help="Language Code (Used for ExifTool, default: de)",
         )
 
+        # encoding used for exiftool commands / note: it should be latin instead of utf8
+        parser.add_argument(
+            "--encoding",
+            type=str,
+            default="latin",
+            help="Encoding (Used for ExifTool, default: latin)",
+        )
+
         # part of ImageOrganizer Constructor
         parser.add_argument(
             "--do_not_show_exiftool_output",
@@ -2799,6 +2757,14 @@ class ImageOrganizer:
             "--dry-run",
             action="store_true",
             help="Only Dry Run, Do Not Save",
+        )
+
+        # part of ImageOrganizer Constructor
+        parser.add_argument(
+            "--recursive",
+            "-r",
+            action="store_true",
+            help="Process Subfolders to allow for bulk operations for cleanup and rename action",
         )
 
         # TODO 🟡 Allow to add keyword sets and to select them interactively or by default choice
@@ -2860,6 +2826,7 @@ def main() -> None:
     args = ImageOrganizer.argparse_set_defaults(args)
     prompt_: bool = not args.auto_confirm
     execute: bool = not args.dry_run
+    recursive: bool = args.recursive
 
     # set print level / default is info
     if os.environ.get("MY_PRINT_LEVEL") is None:
@@ -2868,96 +2835,44 @@ def main() -> None:
     if args.action_show_args:
         print_json(vars(args), "ARGPARSER SETTINGS")
 
-    # rename everything under a given folder
-    if args.action_rename_images:
-        ImageOrganizer.rename_images(args.p_source, execute, prompt_)
+    # move items from a dump folder into separate folders
+    if args.action_move_images:
+        _ = ImageOrganizer.move_images(
+            p_from=args.p_source,
+            p_to=args.p_output,
+            execute=execute,
+            prompt_input=prompt_,
+            f_exiftool=args.cmd_exiftool,
+            encoding=args.encoding,
+            language=args.language,
+        )
         return
 
-    # move items from a dump folder into separate folders
-
-    # testing locally
-    # ImageOrganizer.rename_images(TMP_GPS_TEST_FILES, execute=False)
+    # rename or clean up everything in 1st level children folders
+    if recursive:
+        if args.action_rename_images:
+            ImageOrganizer.run_image_actions_recursive(args.p_source, "rename", execute, prompt_)
+            return
+        elif args.action_cleanup:
+            ImageOrganizer.run_image_actions_recursive(args.p_source, "cleanup", execute, prompt_)
+            return
+    # rename or clean up everything under a given folder
+    else:
+        if args.action_rename_images:
+            ImageOrganizer.rename_images(args.p_source, execute, prompt_)
+            return
+        elif args.action_cleanup:
+            ImageOrganizer.cleanup_image_folder(args.p_source, execute, prompt_)
+            return
 
     # create the Image organizer
     image_organizer: ImageOrganizer = ImageOrganizer.create_image_organizer(args)
-
-    # Preparation step: Create folders and move image files
-    # to subfolders, get a list of folders
-    # p_image_folders = image_organizer.action_move_images(p_to=args.p_output) if args.action_move_images is True else []
-    # p_image_folders = [args.p_source] if p_image_folders is None else p_image_folders
-
-    # now process each folder
-    # TODO
 
     # create all metadata
     image_organizer.prepare_collateral_files()
 
     # apply metadata changes
     image_organizer.update_image_metadata()
-
-    # if args.action_prepare_meta is True:
-    #     return None
-
-    # supply argparse defaults
-
-    # if True:
-    #     p_from = Path(p_images_from)
-    #     p_to = Path(p_root_images)
-    #     p_image_folders = ImageOrganizer.move_files_by_date(p_from, p_to, encoding="latin1")
-    #     print(p_image_folders)
-
-    # Prepare the metadata for a dedicated output folder if given
-    # success = ImageOrganizer.action_prepare_meta(args)
-
-    # now performa all actions as controlled by input params
-
-    # 1. write the metadata.json for all child paths
-    # success = ImageOrganizer.action_update_metadata_recursive(args)
-
-    # Determine output root folder
-    # output_root = args.output
-    # if output_root is None:
-    #     outp = input(f"{C_Q}Enter output root folder path (default {P_PHOTOS_TRANSIENT_DEFAULT}): ").strip()
-    #     if outp:
-    #         output_root = Path(outp)
-    #     else:
-    #         output_root = P_PHOTOS_TRANSIENT_DEFAULT
-    # else:
-    #     output_root = Path(output_root)
-    # if not output_root.exists():
-    #     output_root.mkdir(parents=True, exist_ok=True)
-
-    # Run exiftool to generate metadata.json for input folder
-    # exiftool_create_metadata_recursive(input_folder, output_root)
-
-    # metadata_path = input_folder / F_METADATA_EXIF
-    # if not metadata_path.exists():
-    #     printe("Metadata file not found. Exiftool may have failed.")
-    #     return
-
-    # # Process metadata.json
-    # file_dict = process_metadata_json(metadata_path)
-    # save_processed_dict(file_dict, input_folder / "file_dump.json")
-    # printpy("Processed metadata saved as file_dump.json in input folder.")
-
-    # # Move files by date
-    # errors = move_files_by_date(input_folder, output_root, file_dict)
-
-    # if errors:
-    #     printe("The following files could not be moved:")
-    #     for efile in errors:
-    #         printe(" - {efile}")
-    # else:
-    #     printpy("All files moved successfully.")
-
-    # # Summarize folders and update metadata.json in each dated folder
-    # date_list = list(set(entry["date"] for entry in file_dict.values()))
-    # summary = summarize_and_update_metadata(output_root, date_list)
-    # print(f"\n{C_T}### Summary of moved files per date (in {output_root} ):")
-    # for idx, entry in enumerate(summary):
-    #     print(
-    #         f"{C_H}- {C_I}[{str(idx).zfill(2)}] {C_P}[{entry['date']}]{C_H}, Files moved:{C_B} {entry['file_count']}"
-    #     )
 
 
 if __name__ == "__main__":
