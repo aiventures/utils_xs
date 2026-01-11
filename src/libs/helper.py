@@ -5,7 +5,6 @@ import sys
 import logging
 import re
 
-import argparse
 import json
 from json import JSONDecodeError
 
@@ -14,20 +13,18 @@ from datetime import timedelta, timezone
 from datetime import datetime as DateTime
 import shutil
 import subprocess
-import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Union, Tuple, Optional, Literal, LiteralString
+from typing import Any, Dict, List, Union, Optional, Literal
 from zoneinfo import ZoneInfo
 from configparser import ConfigParser
 from dateutil import parser as date_parser
-from bs4 import BeautifulSoup, Tag
 
 # ANSI color codes
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H
 
 # TODO 🚨 Replace by environment access / maybe add a helper class to address this
 # extend the existing /scripts/convert_bat_env_to_python.py
-from config.myenv import MY_CMD_EXIFTOOL, MY_P_PHOTO_DUMP, MY_P_PHOTOS_TRANSIENT
+from config.myenv import MY_CMD_EXIFTOOL
 
 CMD_EXIFTOOL = MY_CMD_EXIFTOOL
 
@@ -422,98 +419,97 @@ class Persistence:
 
     @staticmethod
     def relocate_file(
-        f_from: Union[Path, str],
-        f_to: Optional[Union[Path, str]] = None,
+        f_src: Union[Path, str],
+        f_trg: Optional[Union[Path, str]] = None,
         action: Literal["move", "copy", "delete", "rename"] = "move",
-        new_filename: Optional[str] = None,
+        filename_trg: Optional[str] = None,
         overwrite: bool = True,
         suffix: Optional[str] = None,
         prefix: Optional[str] = None,
-        new_filetype: Optional[str] = None,
+        filetype: Optional[str] = None,
     ) -> Optional[Path]:
         """convenience method to change filename, move, or copy of a file"""
         # TODO 🔵 alter_file also allow to add pre and postfix and change of suffix
 
-        f_from_: Path = Path(f_from).absolute()
-        if not f_from_.is_file():
-            logger.warning(f"File [{str(f_from)}] is invalid")
+        f_src_: Path = Path(f_src).absolute()
+        if not f_src_.is_file():
+            logger.warning(f"File [{str(f_src)}] is invalid")
             return
 
         # delete
         if action == "delete":
-            f_from.unlink()
-            return f_from_
+            f_src.unlink()
+            return f_src_
 
-        p_from_: Path = f_from_.parent
+        path_trg: Optional[Path] = None
+        filename_trg: Optional[str | Path] = None
 
-        # get the target paths and files
-        f_to_: Optional[Union[Path, str]] = None if f_to is None else Path(f_to)
-        if f_to_ is None:
-            return
-        f_trg_: Optional[Path] = None
-        # make some cases
-        if f_to_.is_dir():
-            # if there is a new name supplied use this one
-            new_name_ = f_from_.name if new_filename is None else new_filename
-            f_trg_ = f_to_.absolute().joinpath(new_name_)
-        elif f_to_.is_file():
-            # if there is a new filename use this
-            f_trg_ = f_to_.absolute()
-            if new_filename is not None:
-                f_trg_ = f_to_.parent.joinpath(new_filename)
-        # no valied file object was passed further analyze the path
+        # get the target paths and files / if target is None use xcurrwent path as default
+        # set the target file
+        # empty path / use exisiting path and existing name or passed name
+        if f_trg is None:
+            path_trg = f_src_.parent
+            # use existing
+            filename_trg = f_src_.name
         else:
-            # is not a file object, assume that it's a filename and
-            # original path will be used
-            if not f_to_.is_absolute():
-                f_trg_ = f_from_.joinpath(f_to_)
-            # if there is an absolute path check whether there is a bvalid root path
+            path_trg = Path(f_trg)
+            # absolute path assume it's a path
+            if path_trg.is_absolute():
+                # check wheteher it's an actual path, a file or a file path with a valid root path
+                if path_trg.is_dir():
+                    # use existing or passed filename
+                    filename_trg = f_src_.name
+                elif path_trg.is_file():
+                    # get the filename and path from passed parameter
+                    filename_trg = path_trg.name
+                    path_trg = path_trg.parent
+                else:
+                    # absolute path given assume it's a new file with a valid parent path
+                    if not path_trg.parent.is_dir():
+                        logger.warning(f"New absolute target file [{str(f_trg)}] has no valid parent path")
+                        return
+                    filename_trg = path_trg.name
+                    path_trg = path_trg.parent
+            # relative path, assume it's a filename
             else:
-                if not f_to_.parent.is_dir():
-                    logger.warning(f"New absolute target file [{str(f_to_)}] has no valid parent path")
-                    return
-                f_trg_ = f_to_.absolute()
-            if new_filename is not None:
-                f_trg_ = f_trg_.parent.joinpath(new_filename)
+                path_trg = f_src_.parent
+                filename_trg = path_trg.name
 
-            f_trg_ = p_from_.joinpath(f_to.name)
+        # now replace the target name if it is given
+        filename_trg = filename_trg if filename_trg is not None else filename_trg
+        if filename_trg is None:
+            logger.warning(
+                f"Couldn't determine new filename for file [{str(f_src)}], target [{str(f_trg)}]/ new filename [{str(filename_trg)}]"
+            )
 
-        # change the filename
-        old_filename = f_trg_.name
-        new_filename: str = f_trg_.stem
-        new_suffix = f_trg_.suffix
-        suffix = f_trg_.suffix
-        if suffix is not None:
-            new_filename = f"{new_filename}{suffix}"
-        if prefix is not None:
-            new_filename = f"{prefix}{new_filename}"
-        if new_filetype is not None:
-            new_suffix = f".{suffix}"
-        new_filename = f"{new_filename}{new_suffix}"
-        if old_filename != new_filename:
-            f_trg_ = f_trg_.parent.joinpath(new_filename)
+        # now add any additions to the filename
+        filename_trg = Path(filename_trg)
+        filename_trg = filename_trg if prefix is None else f"{prefix}{filename_trg}"
+        filename_trg = filename_trg if suffix is None else f"{filename_trg.stem}{suffix}{filename_trg.suffix}"
+        filename_trg = filename_trg if filetype is None else f"{filename_trg.stem}.{filetype}"
 
-        # TODO 🔵 change name / prefixes suffixes, etc / maybe also create a backup file if a backup suffix is provided
+        # now get the new filepath
+        filename_trg = path_trg.joinpath(filename_trg)
 
-        if f_from_ == f_trg_:
-            logger.info(f"File Target Action Identical [{action}] ({str(f_from_)})")
+        if f_src_ == filename_trg:
+            logger.info(f"File Target Action Identical [{action}] ({str(f_src_)})")
             return
 
         if action in ["move", "rename"]:
             if overwrite:
-                f_from_.replace(f_trg_)
+                f_src_.replace(filename_trg)
             else:
                 try:
-                    f_from_.rename(f_trg_)
+                    f_src_.rename(filename_trg)
                 except FileExistsError:
-                    logger.info(f"File Exists, [{action}] ({str(f_from_)}) -> ({str(f_trg_)})")
+                    logger.info(f"File Exists, [{action}] ({str(f_src_)}) -> ({str(filename_trg)})")
                     return
         elif action == "copy":
-            if f_to_.is_file() and overwrite is False:
-                logger.info(f"File Exists, [{action}] ({str(f_from_)}) -> ({str(f_trg_)})")
+            if filename_trg.is_file() and overwrite is False:
+                logger.info(f"File Exists, [{action}] ({str(f_src_)}) -> ({str(filename_trg)})")
                 return
-            shutil.copy2(f_from_, f_trg_)
-        return f_trg_
+            shutil.copy2(f_src_, filename_trg)
+        return filename_trg
 
     @staticmethod
     def read_txt_file(filepath, encoding="utf-8", comment_marker="#", skip_blank_lines=True) -> list:
