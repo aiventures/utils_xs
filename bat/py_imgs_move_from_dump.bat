@@ -1,6 +1,5 @@
 @echo off
-rem py_img_metadata_update.bat [output_path|optional] Extracts Transforms and Updates All Image Metadata in current folder
-
+rem py_img_move_from_dump.bat move folders from MY_P_EXIFTOOL_DUMP to MY_P_EXIFTOOL_TARGET
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
 call setenv.bat
@@ -51,33 +50,28 @@ goto args2
 
 :args2
 rem your code for arg2 here
-set "path_input=%2"
+set "path_output=%2"
 rem echo args2
-set "cmd_params=%cmd_params% --input %path_output%"
+set "cmd_params=%cmd_params% --output %path_output%"
 rem as there are 2 args process param 1
 goto args1
 
 :args1
 rem your code for arg1 here, usually 1st param should be path_input adjust otherwise
 echo args1
-set "path_output=%1"
-set "cmd_params=%cmd_params% --output %path_output%"
+set "path_input=%1"
+set "cmd_params=%cmd_params% --input %path_input%"
 rem python "%py_program%" --p1 "%MY_F_MYENV_BAT%" --output "%MY_F_MYENV_PY%"
 goto end
 
 :end
 
-rem params in build_arg_parser ImageOrganizer build_arg_parser
-
-rem also set print level here DEBUG,INFO,WARNING,LEVEL
-rem set "MY_ENV_PRINT_LEVEL=DEBUG"
-rem set "MY_ENV_PRINT_SHOW_EMOJI=true"
 
 rem MY_PRINT_LEVEL DEBUG INFO WARNING ERROR is usuaklly set by setenv.bat but can be overrideden here
 rem set MY_PRINT_LEVEL=DEBUG
-rem in case no p_source is given then the current path is used
-rem "cmd_params=--action_show_args -prepare -transform -change"
-set "cmd_params=-prepare -transform -change"
+rem MY_P_EXIFTOOL_TARGET (folder containing all images) is defined in setenv.bat
+rem set "cmd_params=--action-move-images --action-show-args -src %MY_P_EXIFTOOL_DUMP% -trg %MY_P_EXIFTOOL_TARGET%"
+set "cmd_params=--action-move-images -src %MY_P_EXIFTOOL_DUMP% -trg %MY_P_EXIFTOOL_TARGET%"
 echo %C_H%RUN %C_PY%%py_program% %cmd_params%%C_0%
 python %py_program% %cmd_params%
 set p1=

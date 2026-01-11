@@ -1,5 +1,9 @@
 @echo off
-rem py_img_metadata_update.bat [output_path|optional] Extracts Transforms and Updates All Image Metadata in current folder
+rem py_img_metadata_wpt.bat creates the gpx waypoint file from geotagged images 
+rem assumes executable exiftool in path and the definition of MY_F_EXIFTOOL_WPT
+rem pointing at a waypoint template, see see https://exiftool.org/geotag.html
+rem the template can be found at /templates/exiftool_wpt.fmt
+rem note the gpx file can be directly imported into mapping software
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
@@ -13,14 +17,13 @@ rem set default path to current path
 set "path_input="%pwd%""
 set "path_output="%MY_P_PHOTO_OUTPUT_ROOT%""
 rem set a command string usually argparse arguments
-set "cmd_params= "
+set "cmd_params="
 set num_args=0
 for %%x in (%*) do set /A num_args+=1
 
 rem show info on run programs
 :show_info
 echo %C_T%### RUN %C_PROG%%~f0%C_0%
-echo %C_T%Run Python Program %C_PY%%py_program% with params%C_H% [%*]%C_0%
 
 if %num_args% GTR 0 goto run_with_params
 rem here's the command to run without params
@@ -60,26 +63,13 @@ goto args1
 :args1
 rem your code for arg1 here, usually 1st param should be path_input adjust otherwise
 echo args1
-set "path_output=%1"
-set "cmd_params=%cmd_params% --output %path_output%"
-rem python "%py_program%" --p1 "%MY_F_MYENV_BAT%" --output "%MY_F_MYENV_PY%"
 goto end
-
 :end
-
-rem params in build_arg_parser ImageOrganizer build_arg_parser
-
-rem also set print level here DEBUG,INFO,WARNING,LEVEL
-rem set "MY_ENV_PRINT_LEVEL=DEBUG"
-rem set "MY_ENV_PRINT_SHOW_EMOJI=true"
-
-rem MY_PRINT_LEVEL DEBUG INFO WARNING ERROR is usuaklly set by setenv.bat but can be overrideden here
-rem set MY_PRINT_LEVEL=DEBUG
-rem in case no p_source is given then the current path is used
-rem "cmd_params=--action_show_args -prepare -transform -change"
-set "cmd_params=-prepare -transform -change"
-echo %C_H%RUN %C_PY%%py_program% %cmd_params%%C_0%
-python %py_program% %cmd_params%
+echo %C_T%### CREATING WAYPOINT TRACK TRACK_WPT.GPX%C_PY%
+exiftool -fileOrder gpsdatetime -p %MY_F_EXIFTOOL_WPT% *.jpg > track_wpt.gpx
+echo %C_PY%
+cat track_wpt.gpx
+echo %C_0%
 set p1=
 set p2=
 set p3=

@@ -248,7 +248,7 @@ class Helper:
         fp: str | Path,
         extensions: Optional[str] = None,
         read_content: bool = False,
-        get_num_files: bool = True,
+        get_num_files: bool = False,
         as_list: bool = False,
     ) -> Optional[Union[list, dict, tuple]]:
         """reading files contents for a given path"""
@@ -453,6 +453,7 @@ class Persistence:
             filename_trg = f_src_.name
         else:
             path_trg = Path(f_trg)
+
             # absolute path assume it's a path
             if path_trg.is_absolute():
                 # check wheteher it's an actual path, a file or a file path with a valid root path
