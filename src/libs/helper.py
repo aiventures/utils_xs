@@ -22,6 +22,7 @@ from dateutil import parser as date_parser
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H
 
+
 # TODO 🚨 Replace by environment access / maybe add a helper class to address this
 # extend the existing /scripts/convert_bat_env_to_python.py
 from config.myenv import MY_CMD_EXIFTOOL

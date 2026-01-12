@@ -8,9 +8,16 @@ from typing import Tuple, Optional
 from libs.helper import Persistence
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
 
+MY_ENV_BOOTSTRAP = "MY_ENV_BOOTSTRAP"
+MY_F_MYENV_JSON = "MY_F_MYENV_JSON"
+
 
 def _parse_env(args: dict) -> Tuple[Optional[str], Optional[str]]:
-    """Parses ENV Variables from input string"""
+    """Parses ENV Variables from input string
+    if params is a string of 'keyxy this is a value' it will return
+    (keyxy,this is a value)
+    if params only contains a key like keyxy it wil try to get it from environment
+    """
     out = [None, None]
 
     params: str = args.get("params", "")
@@ -32,7 +39,13 @@ def _parse_env(args: dict) -> Tuple[Optional[str], Optional[str]]:
 
 
 def save_env(args: dict) -> None:
-    """Saves env variable"""
+    """Saves an env variable to an output folder where it can be picked up
+    p_output: output path
+    params: a string like 'keyxy this is a value' it will split the string at
+    the first space and will use keyxy as key and the rest as value
+    it will save a file named keyxy with the content of 'this is a value' to
+    p_output
+    """
     p_output = args.get("p_output", "no_path")
     if not os.path.isdir(p_output):
         print(f"🚨{C_E}bathelper: Path [{p_output}] doesn't exist{C_0}")
@@ -105,6 +118,40 @@ def create_arg_parser() -> ArgumentParser:
     )
 
     return parser
+
+
+def bootstrap_env(show_env: bool = False, initialize: bool = False) -> dict:
+    """will bootstrap the environment using the environment value MY_F_MYENV_JSON
+    the json can be created using /scripts/convert_bat_env_to_python.py from a
+    bat script containing the environment settings
+    (check /templates/myenv_template.bat for a set of commonly used variables)
+    """
+    if initialize:
+        os.environ[MY_ENV_BOOTSTRAP] = "false"
+    # check if it already was bootstrapped befo, so then there is no need to do it
+    # except initialize flag is set then it will do it
+    if os.environ.get(MY_ENV_BOOTSTRAP, "false").lower() == "true":
+        return {}
+
+    f_env_json = os.environ.get(MY_F_MYENV_JSON)
+    if f_env_json is None:
+        print("There is no environment MY_F_MYENV_JSON containing path to ENV JSON")
+        return {}
+    if not os.path.isfile(f_env_json):
+        print(f"There is no valid file defined for MY_F_MYENV_JSON [{f_env_json}]")
+        return {}
+    env_dict: dict = Persistence.read_json(f_env_json)
+    if show_env:
+        print(f"### SET UP ENVIRONMENT, [{len(env_dict)}] items")
+
+    for env_key, env_value in env_dict.items():
+        os.environ[env_key] = env_value
+        if show_env:
+            env_key_ = f"[{env_key}]"
+            print(f"{env_key_:<20} : {env_value}")
+
+    os.environ[MY_ENV_BOOTSTRAP] = "true"
+    return env_dict
 
 
 def run_action(args: dict) -> None:

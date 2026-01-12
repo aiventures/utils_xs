@@ -45,6 +45,8 @@ It should transform the bat file into python according to the follwing rules, as
 
 """
 
+from libs.helper import Persistence
+import json
 import argparse
 import re
 from datetime import datetime
@@ -52,13 +54,37 @@ from pathlib import Path
 import sys
 
 
-def parse_bat(bat_lines):
+# Matches: set VAR=value OR set "VAR=value"
+VAR_PATTERN = re.compile(r'^set\s+(?:"([^=]+)=(.*)"|([^=]+)=(.*))$', re.IGNORECASE)
+
+
+def parse_bat2json(bat_lines) -> dict:
+    out: dict = {}
+
+    for line in bat_lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.lower().startswith("rem "):
+            continue
+
+        match = VAR_PATTERN.match(line)
+        if match:
+            if match.group(1):  # case: set "VAR=VALUE"
+                var_name, var_value = match.group(1).strip(), match.group(2).strip()
+            else:  # case: set VAR=VALUE
+                var_name, var_value = match.group(3).strip(), match.group(4).strip()
+
+            out[var_name] = var_value
+
+    return out
+
+
+def parse_bat2py(bat_lines):
     variables = {}
     output_lines = []
     pending_comment = None
-
-    # Matches: set VAR=value OR set "VAR=value"
-    var_pattern = re.compile(r'^set\s+(?:"([^=]+)=(.*)"|([^=]+)=(.*))$', re.IGNORECASE)
 
     for line in bat_lines:
         line = line.strip()
@@ -69,7 +95,7 @@ def parse_bat(bat_lines):
             pending_comment = "# " + line[4:].strip()
             continue
 
-        match = var_pattern.match(line)
+        match = VAR_PATTERN.match(line)
         if match:
             if match.group(1):  # case: set "VAR=VALUE"
                 var_name, var_value = match.group(1).strip(), match.group(2).strip()
@@ -152,20 +178,13 @@ def save_python_module(py_path, header, output_lines, resolved):
     Path(py_path).write_text("".join(lines), encoding="utf-8")
 
 
-def bat_to_python(bat_path, py_path):
+def bat_to_target(bat_path, py_path, json_path):
+    """parse the input env file from windows command line script"""
+
     abs_bat_path = str(Path(bat_path).resolve())
 
     # Escape backslashes explicitly to avoid accidental \u sequences
     safe_bat_path = abs_bat_path.replace("\\", "\\\\")
-
-    bat_lines = Path(bat_path).read_text(encoding="utf-8").splitlines()
-    variables, output_lines = parse_bat(bat_lines)
-
-    try:
-        resolved = resolve_variables(variables)
-    except RuntimeError as e:
-        print(f"❌ Error: {e}", file=sys.stderr)
-        sys.exit(1)
 
     header = f'''"""
 This module was generated from {safe_bat_path}
@@ -173,17 +192,40 @@ Date of generation: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
 '''
 
-    save_python_module(py_path, header, output_lines, resolved)
+    bat_lines = Path(bat_path).read_text(encoding="utf-8").splitlines()
+
+    if py_path is not None:
+        variables, output_lines = parse_bat2py(bat_lines)
+
+        try:
+            resolved = resolve_variables(variables)
+        except RuntimeError as e:
+            print(f"❌ Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        save_python_module(py_path, header, output_lines, resolved)
+    if json_path is not None:
+        output_dict = parse_bat2json(bat_lines)
+        if len(output_dict) > 0:
+            print(f"### Output JSON [{json_path}]")
+            print(f"{json.dumps(output_dict, indent=4, default=str)}")
+            Persistence.save_json(json_path, output_dict)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Convert a Windows .bat environment script into a Python module.")
     parser.add_argument("--input", "-i", default="setenv.bat", help="Input .bat file path (default: setenv.bat)")
-    parser.add_argument("--output", "-o", default="setenv.py", help="Output .py file path (default: setenv.py)")
+    parser.add_argument("--output", "-o", default=None, help="Output .py file path (default: setenv.py)")
+    parser.add_argument(
+        "--json", "-j", default=None, help="If a path is set, will also create a json file containing env variables"
+    )
+
     args = parser.parse_args()
 
+    print("CALLED WITH ARGS", json.dumps(vars(args), indent=4, default=str))
+
     try:
-        bat_to_python(args.input, args.output)
+        bat_to_target(args.input, args.output, args.json)
         print(f"✔ Converted {args.input} → {args.output}")
     except Exception as e:
         print(f"❌ Fatal error: {e}", file=sys.stderr)

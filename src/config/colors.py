@@ -1,11 +1,11 @@
 """
-This file was generated from \\utils_xs\\bat\\colors.bat
-Date of generation: 2025-10-14 14:51:42
+This file was generated from C:\\30_Entwicklung\\WORK\\utils_xs\\bat\\colors.bat
+Date of generation: 2026-01-12 08:59:47
 """
 
 # Auto-generated from batch color definitions
 ESC = "\033"
-NUM_ARGS = f"0"
+NUM_ARGS_COLORS = f"0"
 COL_TEST = f"{ESC}[38;2;229,229;229m"
 COL_GREEN_DARK = f"{ESC}[38;5;34m"
 COL_GREEN_LIGHT = f"{ESC}[38;5;46m"
@@ -115,5 +115,5 @@ C_E = f"{COL_RED}"
 
 if __name__ == "__main__":
     vars_dict = {k: f"{v}{k}{C_0}" for k, v in globals().items() if k.isupper()}
-    for _, v in vars_dict.items():
+    for _,v in vars_dict.items():
         print(v + COL_DEFAULT)

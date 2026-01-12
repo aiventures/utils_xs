@@ -27,7 +27,7 @@ for %%x in (%*) do Set /A NUM_ARGS+=1
 echo %C_T%### RUN %C_PROG%%~f0%C_PY%
 
 rem save the environment variable
-set "py_prog=%MY_P_UTILS_SCRIPTS%\bat_helper.py"
+set "py_prog=%MY_P_UTILS_SCRIPTS%\env_helper.py"
 python %py_prog% --help
 
 :end

@@ -178,3 +178,4 @@ bat/myenv.bat
 bat/bat_test.bat
 src/config/local_config.py
 *_local.*
+src/config/myenv.json

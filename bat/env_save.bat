@@ -1,5 +1,5 @@
 @echo off 
-rem env_save.bat [name] [value or existing environment var] saves an environment value into folder MY_P_MYENV (bat_helper.py)
+rem env_save.bat [name] [value or existing environment var] saves an environment value into folder MY_P_MYENV (env_helper.py)
 rem equ	gleich
 rem neq	ungleich
 rem lss	kleiner als
@@ -38,7 +38,7 @@ if not defined MY_P_UTILS_SCRIPTS (
 )
 
 rem save the environment variable
-set "py_prog=%MY_P_UTILS_SCRIPTS%\bat_helper.py"
+set "py_prog=%MY_P_UTILS_SCRIPTS%\env_helper.py"
 python %py_prog% --action-save-env --p-output %MY_P_MYENV% --params "%*"
 
 :end
