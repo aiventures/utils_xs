@@ -8,8 +8,9 @@ rem gtr	größer als
 rem geq	größer gleich
 
 rem activate variables and virtuakl environment 
+rem activate variables and virtual environment 
 call setenv.bat
-call vas.bat
+
 
 :: Count number of arguments
 set NUM_ARGS=0

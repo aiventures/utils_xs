@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Moves Image according to their timestamps.
 
+# HOWTO
+- Geotracker images should be called gps.jpg
+- osm url files name doens't matter. if there are multiple you'll be asked
+- gpx file will be merged into one gpx if there are multiple gpx files
+
+
 TODO
 - Refactor to Instance Classes
 - Add the cli command to create the track from images (jpgs only)

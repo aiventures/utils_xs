@@ -5,6 +5,7 @@ set pwd=%CD%
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
+rem activate variables and virtual environment 
 call setenv.bat
 
 echo %C_T%### RUN %C_PROG%%~f0%C_PY%

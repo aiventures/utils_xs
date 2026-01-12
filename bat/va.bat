@@ -5,6 +5,7 @@ rem va.bat [venv_name|optional] - activates VENV from %MY_P_VENV%, checks parent
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
 call setenv.bat
+rem MY_VENV_DEFAULT is the standard VENV
 
 echo %C_T%### RUN %C_PROG%%~f0%C_PY%
 

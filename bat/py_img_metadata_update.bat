@@ -4,8 +4,6 @@ rem py_img_metadata_update.bat [output_path|optional] Extracts Transforms and Up
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
 call setenv.bat
-rem activate venv for correct path resolution
-call va.bat
 
 set pwd=%CD%
 set "py_program="%MY_P_UTILS_SCRIPTS%\image_organizer.py""

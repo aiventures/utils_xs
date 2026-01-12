@@ -3,7 +3,6 @@ rem template_bat_python.bat tempalte file using a python program
 
 rem activate variables and virtuakl environment 
 call setenv.bat
-call vas.bat
 
 @REM if not defined MY_P_MYENV (
 @REM     echo %C_E%Path MY_P_MYENV to store variables is not defined%C_0%

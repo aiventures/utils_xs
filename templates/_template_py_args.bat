@@ -16,7 +16,6 @@ echo %C_T%Run Python Program %C_PY%%py_program%with params%C_H% [%*]%C_0%
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
 call setenv.bat
-
 rem handle up to 4 goal-based arguments
 if not "%~4"=="" goto args4
 if not "%~3"=="" goto args3

@@ -12,9 +12,8 @@ set NUM_ARGS=0
 for %%x in (%*) do Set /A NUM_ARGS+=1
 
 if defined MY_SETENV_CALLED ( goto run ) 
-rem call colors.bat
+rem activate variables and virtual environment 
 call setenv.bat
-
 :run
 
 rem also set the MY_VENV variable if it has changed 

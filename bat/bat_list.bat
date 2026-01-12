@@ -6,10 +6,11 @@ set num_args=0
 for %%x in (%*) do set /A num_args+=1
 
 :continue
-call colors.bat %*
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
+rem activate variables and virtual environment 
 call setenv.bat
+
 set "py_program=%MY_P_UTILS_SCRIPTS%\bat_list.py"
 set "p_bat=%MY_P_UTILS_BAT%"
 

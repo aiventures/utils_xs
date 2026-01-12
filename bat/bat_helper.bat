@@ -1,9 +1,8 @@
 @echo off 
 rem bat_helper.bat wrapper around env_helper.py
 
-rem activate variables and virtuakl environment 
+rem activate variables and virtual environment 
 call setenv.bat
-call vas.bat
 
 if not defined MY_P_MYENV (
     echo %C_E%Path MY_P_MYENV to store variables is not defined%C_0%

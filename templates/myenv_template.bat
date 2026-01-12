@@ -4,6 +4,9 @@ rem working venv with additional Libraries
 rem place this file to /bat folder and adapt the variables 
 rem use bat2py to create a file containing these variables as python constants
 
+rem set unicode code page to display special characters
+chcp 65001 >NUL
+
 rem will only be called once 
 call colors.bat
 
@@ -78,8 +81,13 @@ set "MY_EXIFTOOL_AUTHOR=HUGOAUTHOR"
 set "MY_EXIFTOOL_AUTHORTITLE=The Honoroable" 
 rem FIXED LOCATION FOR IMAGES DUNP
 set "MY_P_EXIFTOOL_DUMP=C:\<path_to_folder_containing_dump_of_raw_image_files>" 
-rem FIXED LOCATION TO COPY IMAGES BY DATE
+rem FIXED LOCATION TO COPY IMAGES BY DATEs
 set "MY_P_EXIFTOOL_TARGET=C:\<path_to_temp_folder_containing_files_by_date>"
 rem LOGLEVEL FOR PRINTING /libs/custom_print.py (USED IN EXIFTOOL UTILITY, VALUES OF DEBUG INFO WARNING ERROR )
 set "MY_PRINT_LEVEL=DEBUG" 
+
+rem call the default environment directly
+call "%MY_P_VENV_WORK%\Scripts\activate.bat"
+call p.bat
+
 :end
