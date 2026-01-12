@@ -664,6 +664,9 @@ MAP_METADATA: dict = {
     "make": NOT_MAPPED,
     "timezone": NOT_MAPPED,
     "date_created": "DateCreated",
+    "gpsdate": "GPSDateStamp",
+    "gpstime": "GPSTimeStamp",
+    "gpsdatetime": "GPSDateTime",
     "urgency": "Urgency",
     "rating": "Rating",
     "genre": "IntellectualGenre",
@@ -993,7 +996,6 @@ class ExifToolFieldsMapper:
         ]
 
         makernotes = list(self._get_metadata(self._metadata_makernotes, attributes).values())
-        print("HUGO MAKERNOTES", makernotes)
         return makernotes
 
     def _get_iptc_metadata(self) -> list[str]:

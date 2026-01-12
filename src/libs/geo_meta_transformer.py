@@ -297,6 +297,9 @@ KEYWORDS = "keywords"
 IPTC_CATEGORY = "iptc_category"
 DESCRIPTION = "description"
 DATETIME = "datetime"
+GPS_DATETIME = "gpsdatetime"
+GPS_DATE = "gpsdate"
+GPS_TIME = "gpstime"
 TIMEZONE = "timezone"
 COUNTRY = "country"
 COUNTRY_CODE = "country_code"
@@ -343,6 +346,9 @@ EXIFTOOL_MAP = {
     RIGHTS: ["Rights"],
     ORIGINAL_TRANSMISSION_REF: ["OriginalTransmissionReference"],
     DATE_CREATED: ["DateCreated"],
+    GPS_DATETIME: ["GPSDateTime"],
+    GPS_DATE: ["GPSDateStamp"],
+    GPS_TIME: ["GPSTimeStamp"],
     DESCRIPTION: [
         "ImageTitle",
         "ImageDescription",
@@ -703,6 +709,12 @@ class GeoMetaTransformer:
             datetime_meta = DateTime.now()
         year = datetime_meta.strftime("%Y")
         datetime_meta_s = datetime_meta.strftime("%Y-%m-%d %H:%M:%S")
+        # -GPSDateTime="2024:12:31 23:59:59"
+        # -GPSDateStamp="2024:12:31"
+        # -GPSTimeStamp="23:59:59"
+        gps_date_time = datetime_meta.strftime("%Y:%m:%d %H:%M:%S")
+        gps_date = datetime_meta.strftime("%Y:%m:%d")
+        gps_time = datetime_meta.strftime("%H:%M:%S")
         copyright_ = f"(C) Copyright {str(year)} {self._author} "
         # IPTC Category always set to NT1 arts, culture and entertainme
         iptc_category = "NT1"
@@ -734,6 +746,9 @@ class GeoMetaTransformer:
             IPTC_CATEGORY: iptc_category,
             TIMEZONE: timezone,
             DATE_CREATED: datetime_meta_s,
+            GPS_DATE: gps_date,
+            GPS_TIME: gps_time,
+            GPS_DATETIME: gps_date_time,
             URGENCY: urgency,
             RATING: rating,
             GENRE: genre,
