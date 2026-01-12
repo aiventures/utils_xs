@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from typing import Tuple, Optional
 
 from libs.helper import Persistence
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W
+from config.colors import C_0, C_E, C_W
 
 MY_ENV_BOOTSTRAP = "MY_ENV_BOOTSTRAP"
 MY_F_MYENV_JSON = "MY_F_MYENV_JSON"
@@ -95,31 +95,6 @@ def get_env(args: dict) -> Optional[str]:
         Persistence.save_txt(f_out, value)
 
 
-def create_arg_parser() -> ArgumentParser:
-    """Create and return the argument parser."""
-    parser = argparse.ArgumentParser(description="Batch File Helper")
-    parser.add_argument("--f_input", default=None, help="Input File")
-    parser.add_argument("--p_input", default=None, help="Path Input")
-    parser.add_argument("--f_output", default=None, help="Output File")
-    parser.add_argument("--p_output", "--p-output", default=None, help="Path Output")
-    parser.add_argument("--params", default=None, help="Passed Bat Params")
-
-    parser.add_argument(
-        "--action-save-env",
-        "--action_save_env",
-        action="store_true",
-        help="Set an environment variable",
-    )
-    parser.add_argument(
-        "--action-get-env",
-        "--action_get_env",
-        action="store_true",
-        help="Get an environment variable",
-    )
-
-    return parser
-
-
 def bootstrap_env(show_env: bool = False, initialize: bool = False) -> dict:
     """will bootstrap the environment using the environment value MY_F_MYENV_JSON
     the json can be created using /scripts/convert_bat_env_to_python.py from a
@@ -154,6 +129,31 @@ def bootstrap_env(show_env: bool = False, initialize: bool = False) -> dict:
     return env_dict
 
 
+def create_arg_parser() -> ArgumentParser:
+    """Create and return the argument parser."""
+    parser = argparse.ArgumentParser(description="Batch File Helper")
+    parser.add_argument("--f_input", default=None, help="Input File")
+    parser.add_argument("--p_input", default=None, help="Path Input")
+    parser.add_argument("--f_output", default=None, help="Output File")
+    parser.add_argument("--p_output", "--p-output", default=None, help="Path Output")
+    parser.add_argument("--params", default=None, help="Passed Bat Params")
+
+    parser.add_argument(
+        "--action-save-env",
+        "--action_save_env",
+        action="store_true",
+        help="Set an environment variable",
+    )
+    parser.add_argument(
+        "--action-get-env",
+        "--action_get_env",
+        action="store_true",
+        help="Get an environment variable",
+    )
+
+    return parser
+
+
 def run_action(args: dict) -> None:
     """select and run action"""
     if args.get("action_save_env") is True:
@@ -163,6 +163,7 @@ def run_action(args: dict) -> None:
 
 
 def main():
+    """Main."""
     parser = create_arg_parser()
     args = parser.parse_args()
     args_dict = vars(args)

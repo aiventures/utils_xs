@@ -81,25 +81,25 @@ write a python script:
 import os
 import argparse
 import re
-import sys
 from typing import List, Dict, Union, Optional
+
+# TODO  🔵 CLEAN UP
+# get read/write path from env / create the json using bat2py.bat
+from config.constants import ENV_DICT
+from config.colors import C_0, C_T, C_F, C_H, C_Q, C_PROG, C_E, C_I, C_SH
+
+# === Default Configuration ===
+P_BAT_DEFAULT: str = ENV_DICT["MY_P_UTILS_BAT"]
+F_CMD_DEFAULT: str = ENV_DICT["MY_F_MYENV_CMD"]
 
 ALL = ";"
 ANY = ":"
 
 # Add parent directory of the current file to sys.path so as to avoid import errors
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # shows unable to import. run  bat2py to convert the bat files into python constant files
 # nevertheless it will show up as error
 # best to install the utils into a venv anyway
-# TODO 🚨 Replace by environment access / maybe add a helper class to address this
-# extend the existing /scripts/convert_bat_env_to_python.py
-from config.myenv import MY_P_UTILS_BAT, MY_F_MYENV_CMD
-from config.colors import C_0, C_T, C_F, C_H, C_Q, C_PROG, C_E, C_I, C_SH
-
-# === Default Configuration ===
-P_BAT_DEFAULT: str = MY_P_UTILS_BAT
-F_CMD_DEFAULT: str = MY_F_MYENV_CMD
 
 
 def initialize_output_file(output_file: str) -> None:

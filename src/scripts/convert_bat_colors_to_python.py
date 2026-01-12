@@ -51,14 +51,14 @@ def bat_to_python_colors(bat_file_path: str, py_file_path: str = None) -> str:
     # Precompute safe path string and timestamp to avoid f-string backslash issues
     bat_path_resolved = str(Path(bat_file_path).resolve())
     # Escape backslashes explicitly (avoid \u parsing)
-    safe_bat_path = bat_path_resolved.replace("\\", "\\\\")
+    _ = bat_path_resolved.replace("\\", "\\\\")
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     header = '''"""
 This file was generated from {path}
 Date of generation: {ts}
 """
-'''.format(path=safe_bat_path, ts=timestamp)
+'''.format(path="a path", ts=timestamp)
 
     python_lines = [
         header,
@@ -117,6 +117,7 @@ Date of generation: {ts}
 
 
 def show_color_codes():
+    """Shows COlor Codes."""
     ESC = "\033"
     # TODO Show all colorcodes  in a 36 columns x 6 lines table in the output
     # as three number digit color_code ranging from 16 to 231 in the form
@@ -137,6 +138,7 @@ def show_color_codes():
 
 
 def main():
+    """Main."""
     parser = create_arg_parser()
     args = parser.parse_args()
 

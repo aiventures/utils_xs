@@ -1,5 +1,4 @@
 """
-This file was generated from C:\\30_Entwicklung\\WORK\\utils_xs\\bat\\colors.bat
 Date of generation: 2026-01-12 08:59:47
 """
 
@@ -115,5 +114,5 @@ C_E = f"{COL_RED}"
 
 if __name__ == "__main__":
     vars_dict = {k: f"{v}{k}{C_0}" for k, v in globals().items() if k.isupper()}
-    for _,v in vars_dict.items():
+    for _, v in vars_dict.items():
         print(v + COL_DEFAULT)

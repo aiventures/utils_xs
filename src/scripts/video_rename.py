@@ -13,7 +13,7 @@ from datetime import datetime
 import logging
 import argparse
 from argparse import ArgumentParser
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H, C_B, C_F, C_W, C_S, C_1
+from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_F, C_W
 from libs.helper import Persistence
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ REGEX_DICT["REGEX_FILE_PARENTHESES"] = {
 
 def save_json(filepath, data: dict):
     """Saves dictionary data as UTF8 json"""
-    # TODO encode date time see
+    # TODO 🔵 encode date time see
     # https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
 
     with open(filepath, "w", encoding="utf-8") as json_file:
@@ -90,8 +90,8 @@ def get_file_dict(fp, type_filters=None) -> dict:
             if bool(_type_filters) and not filetype in _type_filters:
                 continue
             file_dict[f] = {"filetype": filetype, "content": None}
-            stem = pf.stem
-            content = None
+            # stem = pf.stem
+            # content = None
             if filetype == "txt":
                 file_dict[f]["content"] = Persistence.read_txt_file(pf, comment_marker=None)
         subpath_info["file_details"] = file_dict

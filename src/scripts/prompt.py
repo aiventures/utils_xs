@@ -8,17 +8,12 @@ import subprocess
 import os
 import sys
 
-# Add parent directory of the current file to sys.path so as to avoid import errors
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-# create modules using bat2py.bat
-# best to install the utils into a venv anyway
-# TODO 🚨 Replace by environment access / maybe add a helper class to address this
-# extend the existing /scripts/convert_bat_env_to_python.py
-from config.myenv import MY_F_MYENV_PROMPT
+# get read/write path from env / create the json using bat2py.bat
+from config.constants import ENV_DICT
 from config.colors import C_B, C_P, C_V, C_SC0, C_SC1, C_0, C_1
 
 PROMPT_SYMBOL = "λ"
+MY_F_MYENV_PROMPT = ENV_DICT["MY_F_MYENV_PROMPT"]
 
 
 def get_git_branch(path="."):

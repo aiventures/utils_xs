@@ -137,20 +137,18 @@ import re
 import sys
 import traceback
 import json
-from collections import Counter
-from datetime import datetime as DateTime
-from bs4 import BeautifulSoup
 from pathlib import Path
-from collections import defaultdict
+from collections import defaultdict, Counter
 from urllib.parse import urlparse
-from datetime import datetime, timedelta
+from datetime import timedelta
+from datetime import datetime as DateTime
 
-# get read/write path from env
-# create this module using bat2py.bat
-# best to install the utils into a venv anyway
-# TODO 🚨 Replace by environment access / maybe add a helper class to address this
-# extend the existing /scripts/convert_bat_env_to_python.py
-from config.myenv import MY_P_DESKTOP
+from bs4 import BeautifulSoup
+
+# get read/write path from env / create the json using bat2py.bat
+from config.constants import ENV_DICT
+
+MY_P_DESKTOP: str = ENV_DICT["MY_P_DESKTOP"]
 
 
 def generate_floating_sidebar(anchors):
@@ -213,6 +211,7 @@ def save(filepath, data):
 
 
 def get_soup_from_file(filename):
+    """get soup."""
     try:
         with open(filename, "r", encoding="utf-8") as f:
             return BeautifulSoup(f.read(), "lxml")
@@ -273,6 +272,7 @@ def generate_anchor(header_text):
 
 
 def format_count(n):
+    """pad to 3 digits ."""
     return f"{n:03d}"  # Pads to 3 digits
 
 
@@ -345,7 +345,7 @@ def toc_heatmap(count, max_count, width=5, emoji="🟦"):
 
 def format_domain_table_recent(entries):
     """Returns Markdown table of domain frequencies for links in last 365 days, with emoji heatmap"""
-    one_year_ago = datetime.utcnow() - timedelta(days=365)
+    one_year_ago = DateTime.utcnow() - timedelta(days=365)
     domain_counter = Counter()
 
     for dt, _, _, _, _, url, _ in entries:
@@ -378,6 +378,7 @@ def format_domain_table_recent(entries):
 
 
 def generate_toc_with_heatmap(year_counts, month_counts):
+    """Genrate TOC."""
     toc_lines = ["# Table of Contents", "* [Domain Statistics](#domain-statistics) 🔍"]
     for year in sorted(year_counts.keys(), reverse=True):
         label = f"{year} [{year_counts[year]}]"
@@ -394,6 +395,7 @@ def generate_toc_with_heatmap(year_counts, month_counts):
 
 
 def generate_toc_with_scaled_heatmap(year_counts, month_counts):
+    """Generate TOC."""
     max_month_count = max(month_counts.values()) if month_counts else 0
     toc_lines = [
         "# Table of Contents",
@@ -414,9 +416,9 @@ def generate_toc_with_scaled_heatmap(year_counts, month_counts):
 
 
 def generate_toc_table_vertical_heatmap(year_counts, month_counts):
-    from collections import defaultdict
-
+    """Generate TOC."""
     # Organize months by year
+
     months_by_year = defaultdict(list)
     for key in month_counts:
         year, month = key.split("-")
@@ -467,7 +469,7 @@ def generate_toc_table_vertical_heatmap(year_counts, month_counts):
         row.append("|")
         rows.append("".join(row))
 
-    created_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    created_timestamp = DateTime.now().strftime("%Y-%m-%d %H:%M")
     created_line = f"Generated on: **{created_timestamp}**_"
     return ["# Table of Contents", "", created_line, ""] + ["".join(header), "".join(divider)] + rows
 
@@ -556,7 +558,7 @@ def create_markdown(links_by_date):
             day_links.append(link_line)
             current_day = day
 
-    domain_stats_md = format_domain_table_recent(all_entries)
+    _ = format_domain_table_recent(all_entries)
     sidebar_anchors = build_sidebar_anchors(links_by_date, year_counts)
     sidebar_html = generate_floating_sidebar(sidebar_anchors)
 
@@ -569,6 +571,7 @@ def create_markdown(links_by_date):
 
 
 def run(bookmark_file):
+    """RUN."""
     p = Path(bookmark_file)
     if not p.is_file():
         print(f"{bookmark_file} is not a valid file.")

@@ -176,7 +176,6 @@ import datetime
 import json
 import os
 import re
-import shutil
 import traceback
 from copy import deepcopy
 from datetime import datetime as DateTime
@@ -195,11 +194,10 @@ from dateutil import parser as date_parser
 # ANSI color codes
 from config.colors import C_0, C_B, C_E, C_F, C_H, C_I, C_L, C_P, C_PY, C_Q, C_S, C_T, C_W
 
-# TODO 🚨 Replace by environment access / maybe add a helper class to address this
-# extend the existing /scripts/convert_bat_env_to_python.py
-from config.myenv import MY_P_PHOTO_DUMP, MY_P_PHOTO_OUTPUT_ROOT
+# get read/write path from env / create the json using bat2py.bat
+from config.constants import ENV_DICT
 
-# TODO 🚨 create a waypoint file from jpg files
+# TODO 🟡 create a waypoint file from jpg files / right now this is a bat file
 
 # custom print commands / note that MY_ENV_PRINT_SHOW_EMOJI and MY_ENV_PRINT_SHOW_EMOJI
 # need to be set accordingly in environment to reflect certain debug levels
@@ -310,11 +308,9 @@ from libs.helper import CmdRunner, Helper, Persistence
 from libs.reverse_geo import ReverseGeo
 from libs.exiftool import ExifTool, CMD_EXIFTOOL
 from libs.geo import IMAGE_SUFFIXES
-from libs.geo_meta_transformer import GeoMetaTransformer
 
-
-MY_P_PHOTO_DUMP = Path(MY_P_PHOTO_DUMP)
-P_PHOTO_OUTPUT_ROOT = Path(MY_P_PHOTO_OUTPUT_ROOT)
+MY_P_PHOTO_DUMP: Path = Path(ENV_DICT["MY_P_PHOTO_DUMP"])
+P_PHOTO_OUTPUT_ROOT: Path = Path(ENV_DICT["MY_P_PHOTO_OUTPUT_ROOT"])
 
 FILETYPE_RAW: list = ["arw", "dng", "raf"]
 FILETYPE_IMG: list = ["jpg", "jpeg", "png"]
@@ -1510,7 +1506,7 @@ class ImageOrganizer:
         # Exporting all metadata in a path into a json f_metadata_exif (metadata_exif.json)
         # runs: exiftool -r -g -c %.6f -progress 50 -json -<extensions> ...
 
-        cmd_export_metadata = self._exiftool._cmd_export_meta()
+        cmd_export_metadata = self._exiftool.cmd_export_meta()
         printh(f"    Create Metadata: {C_PY}[{cmd_export_metadata}]")
         f_metadata_exif_ = self._path.joinpath(self._f_metadata_exif)
         exif_metadata_created = CmdRunner.run_cmd_and_stream(cmd_export_metadata, f_metadata_exif_)
@@ -1874,7 +1870,7 @@ class ImageOrganizer:
                     printe("No GPS Time found, will copy camera timestamps")
                     # copy the camera data as offset data of gps
                     gps_data = camera_data.copy()
-                    offset_ms = 0
+                    _ = 0
 
             gps_ts = gps_data.get("timestamp", 0)
             cam_ts = camera_data.get("timestamp", 0)

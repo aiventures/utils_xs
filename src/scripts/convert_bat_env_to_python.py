@@ -45,20 +45,66 @@ It should transform the bat file into python according to the follwing rules, as
 
 """
 
-from libs.helper import Persistence
 import json
 import argparse
 import re
 from datetime import datetime
 from pathlib import Path
 import sys
+from libs.helper import Persistence
 
 
 # Matches: set VAR=value OR set "VAR=value"
 VAR_PATTERN = re.compile(r'^set\s+(?:"([^=]+)=(.*)"|([^=]+)=(.*))$', re.IGNORECASE)
 
 
+def resolve_env_placeholders(env: dict) -> dict:
+    """
+    Recursively resolve %VAR% placeholders inside a dictionary of strings.
+    Returns a new dictionary with all placeholders expanded.
+    Created using AI
+    """
+
+    PLACEHOLDER = re.compile(r"%([^%]+)%")
+
+    resolved = {}
+    resolving = set()  # for cycle detection
+
+    def expand(value: str) -> str:
+        """Expand all %VAR% placeholders in a single string."""
+        while True:
+            match = PLACEHOLDER.search(value)
+            if not match:
+                return value  # no more placeholders
+
+            var = match.group(1)
+
+            if var not in env:
+                raise KeyError(f"Undefined placeholder: %{var}%")
+
+            # Detect circular references
+            if var in resolving:
+                raise ValueError(f"Circular reference detected for %{var}%")
+
+            resolving.add(var)
+            replacement = expand(env[var])
+            resolving.remove(var)
+
+            # Replace only the first occurrence, loop continues for others
+            value = value[: match.start()] + replacement + value[match.end() :]
+
+    # Expand all values
+    for key, val in env.items():
+        if isinstance(val, str):
+            resolved[key] = expand(val)
+        else:
+            resolved[key] = val
+
+    return resolved
+
+
 def parse_bat2json(bat_lines) -> dict:
+    """Parsing the bat into json."""
     out: dict = {}
 
     for line in bat_lines:
@@ -78,10 +124,15 @@ def parse_bat2json(bat_lines) -> dict:
 
             out[var_name] = var_value
 
+    # replace the %...% values by the real values
+    out = resolve_env_placeholders(out)
+
     return out
 
 
 def parse_bat2py(bat_lines):
+    """Parsing the bat into python code."""
+
     variables = {}
     output_lines = []
     pending_comment = None
@@ -213,6 +264,7 @@ Date of generation: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 
 def main():
+    """Main"""
     parser = argparse.ArgumentParser(description="Convert a Windows .bat environment script into a Python module.")
     parser.add_argument("--input", "-i", default="setenv.bat", help="Input .bat file path (default: setenv.bat)")
     parser.add_argument("--output", "-o", default=None, help="Output .py file path (default: setenv.py)")

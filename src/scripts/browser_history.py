@@ -73,17 +73,16 @@ import sys
 import traceback
 import json
 import csv
-from collections import Counter, defaultdict, OrderedDict
+from collections import Counter, defaultdict
 from pathlib import Path
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 import re
 
-# get read/write path from env
-# create this module using bat2py.bat
-# TODO 🚨 Replace by environment access / maybe add a helper class to address this
-# extend the existing /scripts/convert_bat_env_to_python.py
-from config.myenv import MY_P_DESKTOP
+# get read/write path from env / create the json using bat2py.bat
+from config.constants import ENV_DICT
+
+MY_P_DESKTOP: str = ENV_DICT["MY_P_DESKTOP"]
 
 
 def save(filepath, data):
@@ -348,6 +347,7 @@ def create_markdown(records):
 
 
 def run(csv_file):
+    """Run."""
     p = Path(csv_file)
     if not p.is_file():
         print(f"{csv_file} is not a valid file.")

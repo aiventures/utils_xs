@@ -26,18 +26,21 @@ As python keeps its Environment within its runtime environment, there's a trick:
 * run `bat_s.bat` to search for available bat scripts by keywords (multiple keyword can be using `ALL` separator `;` and `ANY` separator `:` in a search string)
 
 # TODO
-* 🟨 `20260106` image_organizer - add command line param to write metadata
-* 🟨 `20260106` image_organizer - add action to clean up folder 
-* 🟨 `20260106` image_organizer - add action to move image dump to target paths
-* 🟨 `20251006` Create a JSON from Python Constants Code 
+
+**NOTE** Also look for `TODO 🟡` / `TODO 🔵`  in source code for future todos
+
 * 🟨 `20251006` Create a markdown toc summary function (`20251006`) 
 * 🟨 `20251006` Create shortcuts for frequently used `Git`, `Pip` and `VENV` commands
 * 🟨 `20251006` Create shortcut to total commander
 * 🟨 `20251007` Use Image Magick to create Thumbnails in SML 
 
 # DONE
-
-* ✅ `20260106` ~~`20251028` Create an EXIFTOOL Wrapper To Read/Write Image Metadata~~
+* `20260112` ~~✅ `20260112` switch to JSON Based Environment Setup~~
+* `20260112` ~~✅ `20260106` image_organizer - add command line param to write metadata~~
+* `20260112` ~~✅ `20260106` image_organizer - add action to clean up folder~~
+* `20260112` ~~✅ `20260106` image_organizer - add action to move image dump to target paths~~
+* `20260112` ~~✅ `20251006` Create a JSON from Python Constants Code~~
+* `20260106` ✅ ~~`20251028` Create an EXIFTOOL Wrapper To Read/Write Image Metadata~~
   * ~~`20251007` Add logic to extract locations~~
-* ✅ `20251006` ~~Script: Move Image files according to their date of creation into new folders using exiftool command~~  
+* `20260106` ✅ ~~Script: Move Image files according to their date of creation into new folders using exiftool command~~  
      ~~`exiftool -r -g -json . > metadata.json` (20251005)~~ [`image_organizer.py`](src/scripts/image_organizer.py)

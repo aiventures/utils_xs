@@ -4,14 +4,13 @@ import os
 import json
 from json import JSONDecodeError
 
-# TODO 🚨 Replace by environment access / maybe add a helper class to address this
-# extend the existing /scripts/convert_bat_env_to_python.py
-from config.myenv import MY_CMD_EXIFTOOL
 from typing import Tuple, List, Dict, Optional, Union
 from pathlib import Path
-from copy import deepcopy
-from config.colors import C_0, C_B, C_E, C_F, C_H, C_I, C_L, C_P, C_PY, C_Q, C_S, C_T, C_W
-from libs.helper import CmdRunner, Helper, Persistence, Transformer
+from config.colors import C_0, C_F, C_H, C_PY, C_Q, C_T
+# get read/write path from env / create the json using bat2py.bat
+from config.constants import ENV_DICT
+
+from libs.helper import CmdRunner, Persistence
 from libs.geo import (
     IMAGE_SUFFIXES,
     F_GPX_MERGED,
@@ -23,16 +22,10 @@ from libs.geo import (
 # custom print commands / note that MY_ENV_PRINT_SHOW_EMOJI and MY_ENV_PRINT_SHOW_EMOJI
 # need to be set accordingly in environment to reflect certain debug levels
 from libs.custom_print import (
-    print_json,
-    printd,
     printe,
-    printw,
     printt,
     printh,
     printi,
-    set_print_level,
-    printpy,
-    inputc,
 )
 
 # suffixes use in EXIFTOOL Comands
@@ -42,7 +35,7 @@ for ext in IMAGE_SUFFIXES:
 
 # Note in the BAT Files you need to activate CHCP 65001 to get the right characters in output
 # this is the literal path to the exiftool executable
-CMD_EXIFTOOL = MY_CMD_EXIFTOOL
+CMD_EXIFTOOL = ENV_DICT["MY_CMD_EXIFTOOL"]
 
 # 3. EXIFTOOL command to geotag images based on a gps track
 # https://exiftool.org/geotag.html
@@ -75,7 +68,6 @@ CMD_EXIFTOOL = MY_CMD_EXIFTOOL
 # MAybe also add Date Time Created From DateToimeCreated
 
 
-# TODO
 # https://exiftool.org/forum/index.php?topic=12620.0
 # Your basic command would be (no plus signs, those aren't used with Coordinates)
 # exiftool -GPSLatitude=40.6892 -GPSLatitudeRef=N -GPSLongitude=-74.0445 -GPSLongitudeRef=W -GPSAltitude=10 -GPSAltitudeRef="Above Sea Level" FILE
@@ -101,7 +93,7 @@ CMD_EXIFTOOL = MY_CMD_EXIFTOOL
 # =>
 
 
-# TODO IMPLEMENT create a waypoint file from geotagged images using a template
+# TODO 🔵 IMPLEMENT create a waypoint file from geotagged images using a template
 # 5. EXIFTOOL create a waypoint file from geotagged images using a template
 # https://exiftool.org/geotag.html#Inverse
 # the template is stored \templates\exiftool_wpt.fmt
@@ -156,6 +148,7 @@ class ExifTool:
 
     @property
     def is_instanciated(self):
+        """Check fir instanciation"""
         return self._is_instanciated
 
     def _print(self, s: str) -> None:
@@ -194,11 +187,7 @@ class ExifTool:
         cmd_exiftool_reverse_geo = [self._exiftool, "-g3", "-a", "-json", "-lang", self._language, "-api"]
 
         lat_lon = f"geolocation={lat},{lon}"
-        # TODO support other locales as well
-        # cmd_exiftool_reverse = CMD_EXIFTOOL_REVERSE_GEO.copy()
         cmd_exiftool_reverse_geo.append(lat_lon)
-        # cmd_exiftool_reverse.append(lat_lon)
-        # get reverse geocoordinates
 
         reverse_geo_s = "".join(CmdRunner.run_cmd_and_print(cmd_exiftool_reverse_geo))
 
@@ -229,7 +218,7 @@ class ExifTool:
 
         return out
 
-    def _cmd_export_meta(self, recursive: bool = False) -> list:
+    def cmd_export_meta(self, recursive: bool = False) -> list:
         """creates the exiftool command to export image data as json"""
         # command to export all exifdata in groups as json for given suffixes
         # progress is shown every 50 images
@@ -255,7 +244,7 @@ class ExifTool:
         subfolders
 
         """
-        exif_cmd = self._cmd_export_meta(recursive)
+        exif_cmd = self.cmd_export_meta(recursive)
         printh(f"   Create Metadata: {C_PY}[{exif_cmd}]")
         f_metadata_exif = self._path.joinpath(f_metadata)
         output = CmdRunner.run_cmd_and_stream(exif_cmd, f_metadata_exif)

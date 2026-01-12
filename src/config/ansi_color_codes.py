@@ -331,6 +331,7 @@ ANSI_COLOR = {
 
 
 def print_color_codes():
+    """Shows color codes."""
     # TODO Show all colorcodes  in a 36 columns x 6 lines table in the output
     # as three number digit color_code ranging from 16 to 231 in the form
     # "{ESC}[38;5;{color_code}{str(color_code).zfill(3)}"
@@ -362,7 +363,7 @@ def print_color_codes():
 
 
 def print_color_groups(ansi_dict):
-    # Extract color groups using a set to remove duplicates
+    """Extract color groups using a set to remove duplicates."""
     color_groups = {entry["color_group"] for entry in ansi_dict.values()}
 
     # Convert to a sorted list
@@ -374,10 +375,11 @@ def print_color_groups(ansi_dict):
 
 
 def print_colors_by_groups(ansi_dict, groups=COLOR_GROUPS):
+    """Show Colors in groups."""
     for group in groups:
         print(f"\n{ESC_CODE_TITLE}##### {group.upper()}{ESC_CODE_RESET}")  # Print group header
 
-        for idx, entry in ansi_dict.items():
+        for _, entry in ansi_dict.items():
             if entry["color_group"] == group:
                 esc_code_color = f"\033[38;5;{entry['index']}m"  # True ANSI index coloring
                 names = ", ".join(entry["names"])
