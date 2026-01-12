@@ -8,8 +8,8 @@ rem last used folder name
 for %%A in ("%cd%") do set MY_LAST_FOLDERNAME=%%~nxA
 
 :: Count number of arguments
-set NUM_ARGS=0
-for %%x in (%*) do Set /A NUM_ARGS+=1
+set NUM_ARGS_P=0
+for %%x in (%*) do Set /A NUM_ARGS_P+=1
 
 if defined MY_SETENV_CALLED ( goto run ) 
 rem activate variables and virtual environment 
@@ -39,7 +39,7 @@ rem set the prompt
 goto end
 
 :end
-set NUM_ARGS=
+set NUM_ARGS_P=
 set cmd_prompt=
 set py_program=
 echo %C_0%

@@ -16,7 +16,7 @@ rem set a default path
 set "py_args=--paths "%MY_P_UTILS_BAT%""
 
 rem show info on run programs
-echo %C_T%### RUN %C_PROG%%~f0%C_PY%
+echo %C_T%### RUN %C_PROG%%~f0%C_PY% 
 
 rem no more params go to end
 if %num_args% EQU 0 goto end
@@ -29,7 +29,7 @@ set "py_args=--query %1 --paths %2"
 goto end
 
 :end
-echo %C_H%RUN %C_PY%^[python "%py_program%" %py_args%]%C_0%
+echo %C_H%RUN %C_PY%python "%py_program%" %py_args%%C_0%
 python "%py_program%" %py_args%
 rem run the command stored in the variable 
 set /p my_cmd=< %MY_F_MYENV_CMD%
