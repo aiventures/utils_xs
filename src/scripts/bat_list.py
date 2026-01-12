@@ -114,7 +114,7 @@ def initialize_output_file(output_file: str) -> None:
           'echo %C_H%Nothing To Do...%C_0%'
         - Displays an info message if successful or an error if failed.
     """
-    default_line = "echo %C_H%Nothing To Do...%C_0%"
+    default_line = "Nothing To Do..."
     try:
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(default_line + "\n")

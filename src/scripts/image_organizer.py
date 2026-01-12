@@ -321,7 +321,7 @@ P_PHOTO_OUTPUT_ROOT: Path = Path(ENV_DICT["MY_P_PHOTO_OUTPUT_ROOT"])
 FILETYPE_RAW: list = ["arw", "dng", "raf"]
 FILETYPE_IMG: list = ["jpg", "jpeg", "png"]
 FILETYPE_TMP: list = ["env", "tmp", "tif", "tiff", "dop", "jpg_original"]
-FILES_DO_NOT_MOVE: list = ["metadata.json", "exiftool_import.json", "gps.jpg", "gpx_merged.gpx"]
+FILES_DO_NOT_MOVE: list = ["metadata.json", "exiftool_import.json", "gps.jpg", "gpx_merged.gpx", "track_wpt.gpx"]
 FILES_DELETE: list = ["timestamp_gps.json", "timestamp_camera.json"]
 FILESUFFIX_DO_NOT_MOVE = ["url"]
 
@@ -564,6 +564,10 @@ class GeoLocation:
         check_for_duplicates = True if len(gpx_files) > 1 else False
 
         for gpx_file in gpx_files:
+            # ignore the wpt file track_wpt.gpx
+            if "wpt" in Path(gpx_file).name:
+                continue
+
             with gpx_file.open("r", encoding="utf-8") as f:
                 soup = BeautifulSoup(f, "xml")
 

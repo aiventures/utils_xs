@@ -1,10 +1,9 @@
 @echo off
-rem py_imgs_rename_images.bat rename images in subfolders of MY_P_EXIFTOOL_TARGET
+rem py_img_cleanup_images.bat delete temp files and orgaize files in current folder
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
 call setenv.bat
-
 set pwd=%CD%
 set "py_program="%MY_P_UTILS_SCRIPTS%\image_organizer.py""
 rem set default path to current path 
@@ -65,11 +64,11 @@ goto end
 
 :end
 
-
 rem MY_PRINT_LEVEL DEBUG INFO WARNING ERROR is usuaklly set by setenv.bat but can be overrideden here
 rem set MY_PRINT_LEVEL=DEBUG
 rem MY_P_EXIFTOOL_TARGET (folder containing all images) is defined in setenv.bat
-set "cmd_params=--action-rename-images --action-show-args --recursive -src %MY_P_EXIFTOOL_TARGET%"
+rem set "cmd_params=--action-cleanup-images --action-show-args --recursive -src %MY_P_EXIFTOOL_TARGET%"
+set "cmd_params=--action-cleanup-images
 echo %C_H%RUN %C_PY%%py_program% %cmd_params%%C_0%
 python %py_program% %cmd_params%
 set p1=
