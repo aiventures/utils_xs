@@ -7,6 +7,7 @@ from json import JSONDecodeError
 from typing import Tuple, List, Dict, Optional, Union
 from pathlib import Path
 from config.colors import C_0, C_F, C_H, C_PY, C_Q, C_T
+
 # get read/write path from env / create the json using bat2py.bat
 from config.constants import ENV_DICT
 
@@ -98,7 +99,14 @@ CMD_EXIFTOOL = ENV_DICT["MY_CMD_EXIFTOOL"]
 # https://exiftool.org/geotag.html#Inverse
 # the template is stored \templates\exiftool_wpt.fmt
 # exiftool -fileOrder gpsdatetime -ext jpg -p exiftool_wpt.fmt . > out.gpx
-CMD_EXIFTOOL_CREATE_WAYPOINTS = [CMD_EXIFTOOL, "-fileOrder", "gpsdatetime", "-ext", "jpg", "-p"]
+CMD_EXIFTOOL_CREATE_WAYPOINTS = [
+    CMD_EXIFTOOL,
+    "-fileOrder",
+    "gpsdatetime",
+    "-ext",
+    "jpg",
+    "-p",
+]
 # exiftool_wpt.fmt . > out.gpx
 
 
@@ -156,7 +164,9 @@ class ExifTool:
         if self._show_output:
             print(s)
 
-    def get_reverse_geoinfo(self, latlon: Tuple | List, file: str = None, index: int = 0, show: bool = False) -> dict:
+    def get_reverse_geoinfo(
+        self, latlon: Tuple | List, file: str = None, index: int = 0, show: bool = False
+    ) -> dict:
         """Using Exiftool Reverse Geo API get the reverse corrdinates"""
         out: Dict = {
             "idx": 1,
@@ -168,7 +178,9 @@ class ExifTool:
         }
 
         if not (isinstance(latlon, List) or isinstance(latlon, Tuple)):
-            printe(f"get_exiftool_reverse_geoinfo, passed params need to be list or tuple{C_0}")
+            printe(
+                f"get_exiftool_reverse_geoinfo, passed params need to be list or tuple{C_0}"
+            )
             return
         lat = round(float(latlon[0]), 6)
         lon = round(float(latlon[1]), 6)
@@ -184,7 +196,15 @@ class ExifTool:
         # -a Shows all duplicate tags instead of suppressing them.
         # -lang Localizes tag descriptions into German.
         # -api geolocation=40.748817,-73.985428 run ExifTool Geo API
-        cmd_exiftool_reverse_geo = [self._exiftool, "-g3", "-a", "-json", "-lang", self._language, "-api"]
+        cmd_exiftool_reverse_geo = [
+            self._exiftool,
+            "-g3",
+            "-a",
+            "-json",
+            "-lang",
+            self._language,
+            "-api",
+        ]
 
         lat_lon = f"geolocation={lat},{lon}"
         cmd_exiftool_reverse_geo.append(lat_lon)
@@ -230,13 +250,28 @@ class ExifTool:
         exiftool_cmd = [self._exiftool]
         if recursive:
             exiftool_cmd.append("-r")
-        exiftool_cmd.extend(["-g", "-c", "'%.6f'", self._progress, "-json"])
+        # note we need to specify the filenmae charset so as to handle umlauts
+        # https://exiftool.org/forum/index.php?topic=9753.0
+        exiftool_cmd.extend(
+            [
+                "-g",
+                "-c",
+                "'%.6f'",
+                self._progress,
+                "-charset",
+                "filename=latin",
+                "-json",
+            ]
+        )
         exiftool_cmd += SUFFIX_ARGS
         exiftool_cmd.append(str(self._path))
         return exiftool_cmd
 
     def export_metadata(
-        self, f_metadata: str = F_METADATA_EXIF, f_metadata_env: str = F_METADATA_EXIF_ENV, recursive: bool = False
+        self,
+        f_metadata: str = F_METADATA_EXIF,
+        f_metadata_env: str = F_METADATA_EXIF_ENV,
+        recursive: bool = False,
     ) -> List:
         """creates a json containing all metadata exif alongside with an env file.
         will store the path to the metadata file
@@ -251,7 +286,9 @@ class ExifTool:
         Persistence.save_txt(self._path / f_metadata_env, str(f_metadata_exif))
         return output
 
-    def _cmd_update_image_metadata(self, f_metadata_import: str, ext: str = "jpg") -> list:
+    def _cmd_update_image_metadata(
+        self, f_metadata_import: str, ext: str = "jpg"
+    ) -> list:
         """creates the exiftool command to update image image data from a json
         command is (will use SourceFile attribute to pick the corresponding file )
         exiftool -m -charset iptc=utf8 -codedcharacterset=utf8 -json=exiftool_import.json -progress1 *.*
@@ -281,13 +318,17 @@ class ExifTool:
 
         path_exiftool_import_: Path = self._path.joinpath(f_metadata_import)
         if not path_exiftool_import_.is_file():
-            printe(f"[ImageOrganizer] update_image_metadata [{str(path_exiftool_import_)}] is not a valid file.")
+            printe(
+                f"[ImageOrganizer] update_image_metadata [{str(path_exiftool_import_)}] is not a valid file."
+            )
             return False
         exif_cmd: list = self._cmd_update_image_metadata(f_metadata_import, ext)
         _cwd = os.getcwd()
         os.chdir(self._path)
         # run_cmd_and_print(cmd: List[str], decode: bool = True, show: bool = False, encoding: str = "latin1") -> list:
-        _ = CmdRunner.run_cmd_and_print(exif_cmd, show=True, c_err=C_F, c_std=C_H, prefix=False)
+        _ = CmdRunner.run_cmd_and_print(
+            exif_cmd, show=True, c_err=C_F, c_std=C_H, prefix=False
+        )
         os.chdir(_cwd)
 
         return True
@@ -356,7 +397,9 @@ class ExifTool:
         p_work = self._path
 
         if self._f_gpx_merged is None:
-            printi(f"No gpx file {self._f_gpx_merged} found, skip processing of creating gps based on gpx")
+            printi(
+                f"No gpx file {self._f_gpx_merged} found, skip processing of creating gps based on gpx"
+            )
             return
 
         # get the geosync offset (previously written), with a default of 00:00:00
@@ -366,7 +409,14 @@ class ExifTool:
         # exiftool -progress50 -json -jpg -tif ... -geosync=00:00:00 -geotag mygps.gpx <file/path>
 
         # exif_cmd = CMD_EXIFTOOL_GEOTAG.copy()
-        exif_cmd = [self._exiftool, self._progress, "-json", f"-geosync={geosync}", "-geotag", self._f_gpx_merged]
+        exif_cmd = [
+            self._exiftool,
+            self._progress,
+            "-json",
+            f"-geosync={geosync}",
+            "-geotag",
+            self._f_gpx_merged,
+        ]
         exif_cmd += SUFFIX_ARGS
         exif_cmd.append(str(p_work))
 
@@ -406,7 +456,9 @@ class ExifTool:
         else:
             try:
                 timestamp_image = cmd_output[0]
-                self._print(f"{C_T}Got Timestamp from {C_F}[{f.name}] {C_H}[{timestamp_image}]{C_0}")
+                self._print(
+                    f"{C_T}Got Timestamp from {C_F}[{f.name}] {C_H}[{timestamp_image}]{C_0}"
+                )
             except IndexError:
                 printe(f"[ExifTool] Couldn't parse timetamp from [{str(f)}]")
         os.chdir(cwd)
