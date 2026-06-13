@@ -1,5 +1,5 @@
 @echo off 
-rem template_bat_python.bat tempalte file using a python program 
+rem video_remame.bat renaming videos in current file and subfolders and consolidating video descriptions into a json 
 
 rem activate variables and virtuakl environment 
 call setenv.bat

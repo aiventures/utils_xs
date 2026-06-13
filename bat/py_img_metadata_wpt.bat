@@ -1,5 +1,5 @@
 @echo off
-rem py_img_metadata_wpt.bat creates the gpx waypoint file from geotagged images 
+rem py_img_metadata_wpt.bat creates the gpx waypoint file from geotagged images  (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT and MY_P_UTILS_SCRIPTS\image_organizer.py)
 rem assumes executable exiftool in path and the definition of MY_F_EXIFTOOL_WPT
 rem pointing at a waypoint template, see see https://exiftool.org/geotag.html
 rem the template can be found at /templates/exiftool_wpt.fmt

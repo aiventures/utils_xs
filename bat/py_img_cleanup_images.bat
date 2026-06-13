@@ -1,5 +1,5 @@
 @echo off
-rem py_img_cleanup_images.bat delete temp files and orgaize files in current folder
+rem py_img_cleanup_images.bat delete temp files and organize files in current folder (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT  and MY_P_UTILS_SCRIPTS\image_organizer.py)
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat

@@ -1,5 +1,5 @@
 @echo off
-rem py_img_rename_images.bat rename images in current subfolder
+rem py_img_rename_images.bat rename images in current subfolder  (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT and MY_P_UTILS_SCRIPTS\image_organizer.py)
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat

@@ -1,5 +1,5 @@
 @echo off
-rem py_img_metadata_update.bat [output_path|optional] Extracts Transforms and Updates All Image Metadata in current folder
+rem py_img_metadata_update.bat [output_path|optional] Extracts Transforms and Updates All Image Metadata in current folder (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT  and MY_P_UTILS_SCRIPTS\image_organizer.py)
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat

@@ -1,5 +1,5 @@
 @echo off
-rem py_img_cleanup_images_undo.bat Moves back files from subfolders in current path
+rem py_img_cleanup_images_undo.bat Moves back files from subfolders in current path (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT  and MY_P_UTILS_SCRIPTS\image_organizer.py)
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat

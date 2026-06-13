@@ -1,5 +1,5 @@
 @echo off
-rem py_imgs_rename_images.bat rename images in subfolders of MY_P_EXIFTOOL_TARGET
+rem py_imgs_rename_images.bat rename images (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT and MY_P_UTILS_SCRIPTS\image_organizer.py)
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
@@ -64,7 +64,6 @@ rem python "%py_program%" --p1 "%MY_F_MYENV_BAT%" --output "%MY_F_MYENV_PY%"
 goto end
 
 :end
-
 
 rem MY_PRINT_LEVEL DEBUG INFO WARNING ERROR is usuaklly set by setenv.bat but can be overrideden here
 rem set MY_PRINT_LEVEL=DEBUG

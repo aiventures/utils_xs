@@ -1,5 +1,5 @@
 @echo off
-rem py_img_move_from_dump.bat move folders from MY_P_EXIFTOOL_DUMP to MY_P_EXIFTOOL_TARGET
+rem py_img_move_from_dump.bat move folders  (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT and MY_P_UTILS_SCRIPTS\image_organizer.py)
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
 call setenv.bat
