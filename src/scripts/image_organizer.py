@@ -743,17 +743,21 @@ class GeoLocation:
 
             if url and "openstreetmap.org" in url.lower():
                 coords = GeoLocation.latlon_from_osm_url(url)
+                if coords is None:
+                    printe(f"Link [{str(f)}] with url [{url}] can't be parsed into lat, lon coordinates ")
+                    continue
                 output_per_file = exiftool.get_reverse_geoinfo(latlon=coords, file=f, index=idx_f)
                 output[idx_f] = output_per_file
             else:
                 continue
 
         if not output:
-            printw(f"No OpenStreetMap links with coordinates found in {folder}")
+            printw(f"No OpenStreetMap links with valid coordinates found in {folder}")
             return None
 
         if len(output) == 1:
             selected = next(iter(output.values()))
+
             printt(f"Found one OpenStreetMap link: {C_P}{selected['file']}")
         else:
             printt("Multiple OpenStreetMap links found:")
