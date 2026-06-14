@@ -619,28 +619,46 @@ class GeoMetaTransformer:
             return None
         return (lat, lon, ele)
 
+    def get_gps_from_fallback_data(self) -> Optional[Tuple[float, float, str, str, float]]:
+        """returns returns lat,lon,orientation lat lon,altitude geo data from fallback  gps data (eg osm link)"""
+        if not isinstance(self._image_reverse_geo_info, dict):
+            return None
+
+        try:
+            _lat = round(float(self._image_reverse_geo_info.get("lat")), 6)
+            _lon = round(float(self._image_reverse_geo_info.get("lon")), 6)
+        # try exifreverse data first
+        except (ValueError, IndexError):
+            printe("[GeoTransformer] No Valid GPS Data found (Supply an OSM Link)")
+            return None
+
+        _elevation = 0
+        _lat_orientation = "N" if _lat >= 0 else "S"
+        _lon_orientation = "E" if _lon >= 0 else "W"
+        return (_lat, _lon, _lat_orientation, _lon_orientation, _elevation)
+
     def get_gps_data(self) -> Optional[Tuple[float, float, str, str, float]]:
         """returns lat,lon,orientation lat lon,altitude geo data from any passedf gps datas"""
 
         if not isinstance(self._gps_track, dict):
-            return None
+            return self.get_gps_from_fallback_data()
 
-        lat = None
-        lon = None
-        elevation = None
+        _lat = None
+        _lon = None
+        _elevation = None
 
         try:
-            lat = round(float(self._gps_track["lat"]), 6)
-            lon = round(float(self._gps_track["lon"]), 6)
-            elevation = int(round(float(self._gps_track["ele"]), 0))
+            _lat = round(float(self._gps_track["lat"]), 6)
+            _lon = round(float(self._gps_track["lon"]), 6)
+            _elevation = int(round(float(self._gps_track["ele"]), 0))
         # try exifreverse data first
         except (ValueError, IndexError):
             printe("[GeoTransformer] No Valid GPS Data found ")
             return None
 
-        lat_orientation = "N" if lat >= 0 else "S"
-        lon_orientation = "E" if lat >= 0 else "W"
-        return (lat, lon, lat_orientation, lon_orientation, elevation)
+        _lat_orientation = "N" if _lat >= 0 else "S"
+        _lon_orientation = "E" if _lon >= 0 else "W"
+        return (_lat, _lon, _lat_orientation, _lon_orientation, _elevation)
 
     def get_gps_extra(self) -> dict:
         """Returns additional extra metadata like heartrate and temperature"""
@@ -696,7 +714,9 @@ class GeoMetaTransformer:
         lon_orientation = None
         elevation = None
 
+        # get the gps data from track or OSM (fallback)
         gps_data = self.get_gps_data()
+
         latlon = None
         if gps_data is not None:
             lat, lon, lat_orientation, lon_orientation, elevation = gps_data
