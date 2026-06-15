@@ -719,6 +719,7 @@ class ExifToolFieldsMapper:
         metadata: dict,
         transformed_metadata: Optional[dict] = None,
         lensinfo: Optional[str] = None,
+        additional_keywords: Optional[list[str]] = None,
     ):
         """uses preprocessed data to parse keywords"""
         self._metadata: dict = metadata
@@ -728,6 +729,8 @@ class ExifToolFieldsMapper:
         self._metadata_composite: dict = metadata.get(COMPOSITE, {})
         self._metadata_makernotes: dict = metadata.get(MAKERNOTES, {})
         self._make = self._metadata_exif.get("Make", UNKNOWN).lower()
+        # additional keywords to be added as exif/iptc keyword data
+        self._additional_keywords: list[str] = additional_keywords if isinstance(additional_keywords, list) else []
         # output of GeoMetaTransformer
         self._transformed_metadata: Optional[dict] = (
             transformed_metadata if isinstance(transformed_metadata, dict) else {}
@@ -771,8 +774,8 @@ class ExifToolFieldsMapper:
         LensMake: VILTROX
         LensModel: AF 28/4.5 XF
         """
-        # TODO Refactor / List of curated manual lenses (right now there's only one 🤡)
-        manual_lenses = {"LENSBABY22": "Lensbaby Sweet 22 F/3.5"}
+        # TODO Refactor / List of curated manual lenses in a different location / read as a json
+        manual_lenses = {"LENSBABY22": "Lensbaby Sweet 22 F/3.5", "LENSBABY_TRIO_28": "Lensbaby Trio 28 F/3.5"}
         lens_model = self._metadata_exif.get("LensModel", "")
         lens_info = self._metadata_exif.get("LensInfo", "unknown")
         lens_make = self._metadata_exif.get("LensMake", "")
@@ -780,8 +783,12 @@ class ExifToolFieldsMapper:
         if len(lens_make) == "":
             lens_model = lens_model.lower()
             # lensbaby used as lens name or 22mm used as focal length
-            if "lensbaby" in lens_model or "22" in lens_info:
-                return manual_lenses["LENSBABY22"]
+            if "lensbaby" in lens_model:
+                if "22" in lens_info:
+                    return manual_lenses["LENSBABY22"]
+                if "28" in lens_info:
+                    return manual_lenses["LENSBABY_TRIO_28"]
+
         return f"{lens_make.strip()} {lens_model}"
 
     def _get_lens_info_dlux(self) -> str:
@@ -1094,6 +1101,11 @@ class ExifToolFieldsMapper:
         out.extend(self._get_makernotes_keywords())
         # clean up keywords
         out = [meta.strip() if isinstance(meta, str) else meta for meta in out]
+        # additional keywords
+        out.extend(self._additional_keywords)
+        # remove duplicates
+        seen = set()
+        out = [x for x in out if not (x in seen or seen.add(x))]
         return out
 
     @staticmethod
@@ -1108,7 +1120,6 @@ class ExifToolFieldsMapper:
             if metadata == NOT_MAPPED:
                 continue
             out.append(metadata)
-
         return out
 
     def map_metadata(self, metadata: dict) -> dict:
@@ -1118,10 +1129,10 @@ class ExifToolFieldsMapper:
         valid_metadata = []
         invalid_metadata = []
 
-        # valid_metadata = tuple(list(MAP_METADATA.keys()))
         exiftool_attributes_valid = ExifToolFieldsMapper.get_valid_exiftool_attributes()
 
         # map any input attributes to valid exiftooll attributes
+
         for attribute, value in metadata.items():
             exiftool_attributes = attribute
             if attribute not in exiftool_attributes_valid:
@@ -1141,6 +1152,8 @@ class ExifToolFieldsMapper:
                     continue
                 # do not update if the value was set before
                 original_value = metadata.get(exiftool_attribute)
+
+                # for keywords use the new values
                 out[exiftool_attribute] = original_value if original_value is not None else value
 
         print_json(

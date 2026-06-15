@@ -252,6 +252,10 @@ from libs.geo import (
     CONFIG_F_OFFSET_ENV,
     CONFIG_F_OFFSET_SECS_ENV,
     CONFIG_F_OSM,
+    # Addtional Keywords to be added to Keywords
+    CONFIG_F_KEYWORDS_ENV,
+    CONFIG_F_KEYWORDS,
+    F_KEYWORDS,
     # OpenStretMapConfiguration,
     CONFIG_F_OSM_ENV,
     CONFIG_F_TIMESTAMP_CAMERA,
@@ -303,10 +307,12 @@ from libs.geo import (
     # OFFSET_STR,
     # OFFSET_CAM,
     # OFFSET_GPS,
+    KEYWORDS,
     LAT_LON,
     METADATA_EXIF,
     METADATA_EXIFTOOL,
     # METADATA_IPTC,
+    METADATA_ADD_KEYWORDS,
     METADATA_OSM,
     # METADATA_GEO,
     OFFSET,
@@ -379,6 +385,7 @@ CONFIG_METADATA: Dict = {
         CONFIG_F_OFFSET_SECS_ENV: F_OFFSET_SECS_ENV,  # file ref to image offset in seconds
         CONFIG_F_METADATA_GEO_REVERSE_ENV: F_METADATA_GEO_REVERSE,  # file to GEO REVEERSE DATA
         CONFIG_F_EXIFTOOL_IMPORT_ENV: F_EXIFTOOL_IMPORT,  # fileref to json containing metadata to be used for exiftool image import
+        CONFIG_F_KEYWORDS_ENV: F_KEYWORDS,  # additional keywords to be included
     },
     # F_OFFSET_ENV = "offset.env"
     # F_OFFSET_SECS_ENV = "offset_sec.env"
@@ -394,6 +401,7 @@ CONFIG_METADATA: Dict = {
         CONFIG_F_GPX_MERGED_JSON: None,  # Link to merged GPX JSON
         CONFIG_F_METADATA_GEO_REVERSE: None,  # Georeverse Metadata
         CONFIG_F_EXIFTOOL_IMPORT: None,  # metadata json containing import metadata
+        CONFIG_F_KEYWORDS: None,  # additional keywords to be included
     },
     OFFSET: {
         CONFIG_OFFSET_STR: "+00:00:00",  # Offset as -+hh:mm:ss
@@ -861,6 +869,7 @@ class ImageOrganizer:
         f_reverse_geo: str = F_METADATA_GEO_REVERSE,
         f_gpx_merged: str = F_GPX_MERGED,
         f_exiftool_import: str = F_EXIFTOOL_IMPORT,
+        f_keywords: str = F_KEYWORDS,
         cmd_exiftool: str = CMD_EXIFTOOL,
         language: str = "de",
         cmd_exiftool_output: bool = True,
@@ -907,6 +916,8 @@ class ImageOrganizer:
         self._f_gpx_merged: str = f_gpx_merged
         # name of the metadatafile to be used for changing exiftdata
         self._f_exiftool_import = f_exiftool_import
+        # file contianing additional keywords for ITPC metadata
+        self._f_keywords = f_keywords
         # path to exiftool executable
         self._cmd_exiftool = cmd_exiftool
         # output of exiftool
@@ -1284,6 +1295,12 @@ class ImageOrganizer:
         _images_metadata = self._collect_metadata_by_image()
         _num_images = len(_images_metadata)
         print(f"{C_H}📷 [ImageOrganizer] Prepare Metadata Mapping for [{_num_images}] Images{C_0}")
+        # TODO get additional keywords
+        print("HUGOXXX")
+
+        # TODO 🟡 SET DEFAULT KEYWORDS
+        _additional_keywords: list[str] = self._metadata.get(METADATA_ADD_KEYWORDS, [])
+
         for _idx, (_filename, _img_metadata) in enumerate(_images_metadata.items()):
             Helper.show_progress(_idx, _num_images, "Mapped Images")
             _filename: str = _img_metadata.get(FILENAME)
@@ -1296,8 +1313,6 @@ class ImageOrganizer:
             _image_geo_info: dict = _img_metadata.get(IMAGE_GEO_INFO)
             _image_reverse_geo_info = _img_metadata.get(IMAGE_REVERSE_GEO_INFO)
 
-            # TODO 🟡 SET DEFAULT KEYWORDS
-            _keywords: Optional[list[str]] = None
             # TODO 🟡 SET THIS PARAMETER FROM ARGPARSE
             _map_exif2keywords: bool = True
 
@@ -1311,7 +1326,7 @@ class ImageOrganizer:
                 _gps_track,
                 _file_path,
                 _datetime_created,
-                _keywords,
+                _additional_keywords,
                 _map_exif2keywords,
             )
             _metadata_transformed = _transformer.transform()
@@ -1334,8 +1349,13 @@ class ImageOrganizer:
             _img_metadata[METADATA_EXIF][IPTC] = _metadata_iptc
             # now collect all keywords
             # TODO 🔵 add keyword update mode: replace, update
-            _field_mapper = ExifToolFieldsMapper(_img_metadata[METADATA_EXIF], _metadata_transformed)
-            _keywords = _field_mapper.get_keywords()
+            _field_mapper = ExifToolFieldsMapper(
+                metadata=_img_metadata[METADATA_EXIF],
+                transformed_metadata=_metadata_transformed,
+                # lensinfo: Optional[str] = None,
+                additional_keywords=_additional_keywords,
+            )
+            _keywords = _field_mapper.get_keywords().copy()
 
             print_json(
                 {"keywords": _keywords},
@@ -1345,12 +1365,38 @@ class ImageOrganizer:
             )
             # Pull Together all metadata
             _metadata_transformed.update(_metadata_iptc)
-            _metadata_transformed["keywords"] = _keywords
+            _metadata_transformed[KEYWORDS] = _keywords
             # map the metadata as output
             _metadata_transformed = _field_mapper.map_metadata(_metadata_transformed)
             if len(_metadata_transformed) > 0:
                 out.append(_metadata_transformed)
 
+        return out
+
+    def _read_additional_keywords(self) -> list[str]:
+        """reads additional keywords if a file is found"""
+        self._metadata[METADATA_ADD_KEYWORDS] = None
+        out: list[str] = []
+        f_keywords: Optional[str] = self._metadata[FILES][CONFIG_F_KEYWORDS]
+        if f_keywords is None:
+            return []
+        # read keywords also
+        keywords = Persistence.read_txt_file(f_keywords)
+        keywords = [k.strip() for k in keywords]
+        # also allow commas or semicolon as separator
+        for k in keywords:
+            items: Optional[str] = None
+            if ";" in k:
+                items = k.split(";")
+            elif "," in k:
+                items = k.split(",")
+            else:
+                out.append(k)
+            if items:
+                out.extend([i.strip() for i in items])
+        # adding keywords to metadata
+        self._metadata[METADATA_ADD_KEYWORDS] = out
+        printi(f"🏷️ Additional Keywords found in [{f_keywords}]: {out}")
         return out
 
     def _merge_metadata(self) -> Dict:
@@ -1393,6 +1439,7 @@ class ImageOrganizer:
             files_env[CONFIG_F_TIMESTAMP_GPS_ENV]: CONFIG_F_TIMESTAMP_GPS,
             files_env[CONFIG_F_METADATA_GEO_REVERSE_ENV]: CONFIG_F_METADATA_GEO_REVERSE,
             files_env[CONFIG_F_EXIFTOOL_IMPORT_ENV]: CONFIG_F_EXIFTOOL_IMPORT,
+            files_env[CONFIG_F_KEYWORDS_ENV]: CONFIG_F_KEYWORDS,
         }
 
         # mapping the values in the env files to fields
@@ -1663,6 +1710,7 @@ class ImageOrganizer:
         - Read / Input GPS Time from Image => F_TIMESTAMP_GPS
         - Calculate Time Offset: F_TIMESTAMP_CAMERA / F_TIMESTAMP_GPS => F_OFFSET_ENV
         - Extract lat lon default from OSM links => F_LAT_LON_ENV
+        - read the additional keywords if present
         """
 
         if self._action_prepare_meta is False:
@@ -1702,7 +1750,10 @@ class ImageOrganizer:
         # dict of merged meta data is returned / it's also in self._metadata
         _ = self._merge_metadata()
 
-        # 4. Get the GPS metadata and add it to the merged file
+        # 4. process the additional keywords located in file keywords.txt if present
+        _ = self._read_additional_keywords()
+
+        # 54. Get the GPS metadata and add it to the merged file
         # if already saved
         # - use the collected exif data as input list
         # - amend the metadata.
@@ -1714,16 +1765,16 @@ class ImageOrganizer:
         if gps_metadata_extracted:
             printh("    🌍 Processed GPS Metadata")
 
-        # 5. use_reverse_geo if activated / returns the metadata
+        # 6. use_reverse_geo if activated / returns the metadata
         # save geo reverse data (retrieved from external service as separate json)
         # returns the updated self._metadata
         _ = self.process_reverse_geo_metadata(overwrite=self._overwrite_reverse_geo)
 
-        # 6. Create to EXIFTOOL JSON (exiftool_import.json)
+        # 7. Create to EXIFTOOL JSON (exiftool_import.json)
         # that contains the metadata to be used as image metadata
         self._prepare_exiftool_metadata()
 
-        # 7. Save all Data containing previous changes to a big metadata.json
+        # 8. Save all Data containing previous changes to a big metadata.json
         f_metadata = self._metadata[FILES][CONFIG_F_METADATA]
         Persistence.save_json(f_metadata, self._metadata)
 
@@ -2973,6 +3024,8 @@ def main() -> None:
 
     # move items from a dump folder into separate folders
     if args.action_move_images:
+        printi("🚗### ACTION: MOVE IMAGES")
+
         _ = ImageOrganizer.move_images(
             p_from=args.p_source,
             p_to=args.p_output,
@@ -2987,17 +3040,21 @@ def main() -> None:
     # rename or clean up everything in 1st level children folders
     if recursive:
         if args.action_rename_images:
+            printi("🔠🔁### ACTION: RENAME IMAGES RECURSIVELY")
             ImageOrganizer.run_image_actions_recursive(args.p_source, "rename", execute, prompt_)
             return
         elif args.action_cleanup_images:
+            printi("🧹🔁### ACTION: CLEANUP IMAGES RECURSIVELY")
             ImageOrganizer.run_image_actions_recursive(args.p_source, "cleanup", execute, prompt_, revert_cleanup)
             return
     # rename or clean up everything under a given folder
     else:
         if args.action_rename_images:
+            printi("🔠### ACTION: RENAME IMAGES")
             ImageOrganizer.rename_images(args.p_source, execute, prompt_)
             return
         elif args.action_cleanup_images:
+            printi("🧹### ACTION: CLEANUP IMAGES")
             ImageOrganizer.cleanup_image_folder(args.p_source, execute, prompt_, revert_cleanup)
             return
 

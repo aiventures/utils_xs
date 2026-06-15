@@ -43,6 +43,8 @@ METADATA_EXIF = "metadata_exif"
 METADATA_IPTC = "metadata_iptc"
 METADATA_GEO = "metadata_geo"
 METADATA_EXIFTOOL = "metadata_exiftool"
+METADATA_ADD_KEYWORDS = "metadata_add_keywords"
+
 
 METADATA_OSM = "metaddata_osm"
 TIMESTAMP_IMAGE = "timestamp_image"
@@ -64,6 +66,8 @@ TIMEZONE_DEFAULT = "Europe/Berlin"
 ELEVATION = "elevation"
 HEARTRATE = "heartrate"
 TEMPERATURE = "temperature"
+# Keywords
+KEYWORDS = "Keywords"
 
 # All Metadata (the json template below)
 CONFIG_F_METADATA_ENV = "f_metadata_env"
@@ -113,6 +117,11 @@ F_TIMESTAMP_IMG_ENV = "timestamp_img.env"
 F_TIMESTAMP_GPS = "timestamp_gps.json"
 F_TIMESTAMP_CAMERA = "timestamp_camera.json"
 F_EXIFTOOL_IMPORT = "exiftool_import.json"
+
+# Addtional Keywords to be added to Keywords
+CONFIG_F_KEYWORDS_ENV = "f_keywords_env"
+CONFIG_F_KEYWORDS = "f_keywords"
+F_KEYWORDS = "keywords.txt"
 
 # OpenStretMap Configuration
 CONFIG_F_OSM_ENV = "f_osm_env"
