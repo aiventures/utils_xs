@@ -5,6 +5,9 @@ rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat
 rem put it into executable PATH and call it setenv.bat
 call setenv.bat
 
+rem set this environment variable to auto split the image path at _ character and add it to keywords
+set "MY_ENV_KEYWORD_AUTO=X"
+
 set pwd=%CD%
 set "py_program="%MY_P_UTILS_SCRIPTS%\image_organizer.py""
 rem set default path to current path 

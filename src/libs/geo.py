@@ -45,6 +45,11 @@ METADATA_GEO = "metadata_geo"
 METADATA_EXIFTOOL = "metadata_exiftool"
 METADATA_ADD_KEYWORDS = "metadata_add_keywords"
 
+# Environment Variable Definitions
+
+# flag whether foldername should be added as tags (separated at underscores)
+MY_ENV_KEYWORD_AUTO = "MY_ENV_KEYWORD_AUTO"
+
 
 METADATA_OSM = "metaddata_osm"
 TIMESTAMP_IMAGE = "timestamp_image"

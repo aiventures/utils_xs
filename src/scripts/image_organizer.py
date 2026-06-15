@@ -239,6 +239,7 @@ from libs.geo_meta_transformer import GeoMetaTransformer
 from libs.exiftool_fields import ExifToolFieldsMapper, IPTC
 
 from libs.geo import (
+    MY_ENV_KEYWORD_AUTO,
     CONFIG_F_GPX_MERGED,
     # GeotrackerGPXDATA,
     CONFIG_F_GPX_MERGED_ENV,
@@ -885,6 +886,11 @@ class ImageOrganizer:
             return None
         self._path: Path = _path.absolute()
 
+        # automatically add path name as additional labels separated at underscores
+        self._keywords_auto: list[str] = (
+            [] if os.environ.get("MY_ENV_KEYWORD_AUTO") is None else self._path.name.split("_")
+        )
+
         # add actions
         self._action_prepare_meta = action_prepare_meta
         self._action_prepare_transform = action_prepare_transform
@@ -1295,11 +1301,10 @@ class ImageOrganizer:
         _images_metadata = self._collect_metadata_by_image()
         _num_images = len(_images_metadata)
         print(f"{C_H}📷 [ImageOrganizer] Prepare Metadata Mapping for [{_num_images}] Images{C_0}")
-        # TODO get additional keywords
-        print("HUGOXXX")
 
-        # TODO 🟡 SET DEFAULT KEYWORDS
         _additional_keywords: list[str] = self._metadata.get(METADATA_ADD_KEYWORDS, [])
+        # add auto generated labels
+        _additional_keywords.extend(self._keywords_auto)
 
         for _idx, (_filename, _img_metadata) in enumerate(_images_metadata.items()):
             Helper.show_progress(_idx, _num_images, "Mapped Images")
@@ -1375,7 +1380,7 @@ class ImageOrganizer:
 
     def _read_additional_keywords(self) -> list[str]:
         """reads additional keywords if a file is found"""
-        self._metadata[METADATA_ADD_KEYWORDS] = None
+        self._metadata[METADATA_ADD_KEYWORDS] = []
         out: list[str] = []
         f_keywords: Optional[str] = self._metadata[FILES][CONFIG_F_KEYWORDS]
         if f_keywords is None:
