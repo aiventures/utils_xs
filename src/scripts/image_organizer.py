@@ -176,13 +176,17 @@ Also add to the program
 
 """
 
+# TODO Add Logging
+
 from __future__ import annotations
 import argparse
+import copy
 import datetime
 import json
 import os
 import re
 import traceback
+from os import listdir
 from copy import deepcopy
 from datetime import datetime as DateTime
 from datetime import timezone
@@ -342,6 +346,7 @@ P_PHOTO_OUTPUT_ROOT: Path = Path(ENV_DICT["MY_P_PHOTO_OUTPUT_ROOT"])
 FILETYPE_RAW: list = ["arw", "dng", "raf"]
 FILETYPE_IMG: list = ["jpg", "jpeg", "png"]
 FILETYPE_TMP: list = ["env", "tmp", "tif", "tiff", "dop", "jpg_original"]
+FILETYPE_SUFFIXES = [".arw", ".dng", ".raf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".jpg_original"]
 FILES_DO_NOT_MOVE: list = [
     "metadata.json",
     "exiftool_import.json",
@@ -885,10 +890,13 @@ class ImageOrganizer:
             printe("[ImageOrganizer] No valid path {_path}")
             return None
         self._path: Path = _path.absolute()
+        self._has_images = ImageOrganizer._contains_images(self._path)
+        if self._has_images is False:
+            return
 
         # automatically add path name as additional labels separated at underscores
         self._keywords_auto: list[str] = (
-            [] if os.environ.get("MY_ENV_KEYWORD_AUTO") is None else self._path.name.split("_")
+            [] if os.environ.get(MY_ENV_KEYWORD_AUTO) is None else self._path.name.split("_")
         )
 
         # add actions
@@ -932,6 +940,21 @@ class ImageOrganizer:
         self._auto_confirm: bool = auto_confirm
         # get an exiftool instance
         self._exiftool = self._create_exiftool()
+
+    @staticmethod
+    def _contains_images(path: str | Path) -> bool:
+        """checks if the path contains image files after all"""
+
+        files = [
+            f
+            for f in listdir(Path(path))
+            if (Path(path).joinpath(f).is_file() and Path(f).suffix.lower() in FILETYPE_SUFFIXES)
+        ]
+
+        if len(files) == 0:
+            printw(f"⚠️Path [{str(path)}] doesn't contain any images")
+
+        return len(files) > 0
 
     def _create_exiftool(self, encoding: str = None, progress: int = 10) -> Optional[ExifTool]:
         """creates an exiftool instance or None if it couldn't be instanciated"""
@@ -1718,6 +1741,9 @@ class ImageOrganizer:
         - read the additional keywords if present
         """
 
+        if self._has_images is False:
+            return
+
         if self._action_prepare_meta is False:
             printd("[ImageOrganizer] prepare step will be skipped")
             return
@@ -2340,9 +2366,13 @@ class ImageOrganizer:
 
     def update_image_metadata(self) -> bool:
         """Update image metadata using exiftool"""
+        if self._has_images is False:
+            return False
+
         if self._action_change_metadata is False:
             printd("Updating image metadata using exiftool will be skipped")
             return False
+
         # exiftool encoding
         exiftool_ = self._create_exiftool(encoding="utf8", progress=1)
 
@@ -2360,6 +2390,9 @@ class ImageOrganizer:
         revert: bool = False,
     ) -> Optional[bool]:
         """cleans up an image folder"""
+        if ImageOrganizer._contains_images(p_root) is False and revert is False:
+            return
+
         execute_ = execute
         p_root_ = Path(p_root).absolute()
         files_delete: list = []
@@ -2438,6 +2471,10 @@ class ImageOrganizer:
         """Rename Raw and unnamed Images according to the lowermost path as prefix
         returns old name / new name as tuple
         """
+
+        if ImageOrganizer._contains_images(p_root) is False:
+            return
+
         execute_ = execute
         out = []
         regex_date_pattern = re.compile(r"\d{8}")  # exactly 8 digits
@@ -2551,10 +2588,11 @@ class ImageOrganizer:
     @staticmethod
     def run_image_actions_recursive(
         p_root: str,
-        action: Literal["rename", "cleanup"] = "rename",
+        action: Literal["rename", "cleanup", "process"] = "rename",
         execute: bool = False,
         prompt_input: bool = True,
         revert: bool = False,
+        args: Optional[argparse.Namespace] = None,
     ) -> Optional[List[tuple]]:
         """run actions for first level folders"""
         p_root_ = Path(p_root).absolute()
@@ -2562,6 +2600,7 @@ class ImageOrganizer:
 
         # functions to decode
         for subpath, _, _ in os.walk(p_root):
+            printi(f"\n📂### RUN ACTION [{action}] in Path [{str(subpath)}]")
             subpath_ = Path(subpath).absolute()
             # only process direct children of root path
             if subpath_.parent != p_root_:
@@ -2573,6 +2612,19 @@ class ImageOrganizer:
                     rename_images.extend(rename_images_)
             elif action == "cleanup":
                 ImageOrganizer.cleanup_image_folder(subpath, execute, prompt_input, revert)
+            elif action == "process":
+                if args is None:
+                    printe(f"[Image Organizer] No arguments supplied for processing subfolders [{p_root}]")
+                    break
+                # run everything on a argparse deepcopy
+                argparse_subfolder = argparse.Namespace(**{k: copy.deepcopy(v) for k, v in vars(args).items()})
+                argparse_subfolder.p_source = subpath
+                # create the Image organizer
+                image_organizer: ImageOrganizer = ImageOrganizer.create_image_organizer(argparse_subfolder)
+                # create all metadata
+                image_organizer.prepare_collateral_files()
+                # apply metadata changes
+                image_organizer.update_image_metadata()
 
         return rename_images
 
@@ -2999,7 +3051,7 @@ class ImageOrganizer:
         )
 
 
-def main() -> None:
+def main(args_overwrite: Optional[list[str]] = None) -> None:
     """
     Main function that orchestrates reading arguments, running exiftool,
     processing metadata, moving files, updating metadata in date folders,
@@ -3010,9 +3062,17 @@ def main() -> None:
 
     # parse from commmand line
     parser = ImageOrganizer.build_arg_parser()
-    args = parser.parse_args()
+
+    # overwrite arguments / https://stackoverflow.com/questions/54050343/how-to-set-variables-value-in-command-line-using-argparse-or-sys-avrg
+    # myprog --foo 10 --bar x y z => parser.parse_args(["--flag", "value", "pos1", "pos2"])
+    args = None
+    if args_overwrite is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(args_overwrite)
     # set defaults
     args = ImageOrganizer.argparse_set_defaults(args)
+
     prompt_: bool = not args.auto_confirm
     execute: bool = not args.dry_run
     recursive: bool = args.recursive
@@ -3052,6 +3112,13 @@ def main() -> None:
             printi("🧹🔁### ACTION: CLEANUP IMAGES RECURSIVELY")
             ImageOrganizer.run_image_actions_recursive(args.p_source, "cleanup", execute, prompt_, revert_cleanup)
             return
+        else:
+            printi("🚀🔁### ACTION: PROCESS IMAGES RECURSIVELY")
+            ImageOrganizer.run_image_actions_recursive(
+                p_root=args.p_source, action="process", execute=execute, prompt_input=prompt_, args=args
+            )
+            return
+
     # rename or clean up everything under a given folder
     else:
         if args.action_rename_images:
@@ -3063,14 +3130,12 @@ def main() -> None:
             ImageOrganizer.cleanup_image_folder(args.p_source, execute, prompt_, revert_cleanup)
             return
 
-    # create the Image organizer
-    image_organizer: ImageOrganizer = ImageOrganizer.create_image_organizer(args)
-
-    # create all metadata
-    image_organizer.prepare_collateral_files()
-
-    # apply metadata changes
-    image_organizer.update_image_metadata()
+        # create the Image organizer
+        image_organizer: ImageOrganizer = ImageOrganizer.create_image_organizer(args)
+        # create all metadata
+        image_organizer.prepare_collateral_files()
+        # apply metadata changes
+        image_organizer.update_image_metadata()
 
 
 if __name__ == "__main__":

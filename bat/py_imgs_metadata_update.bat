@@ -1,5 +1,5 @@
 @echo off
-rem py_img_metadata_update.bat [output_path|optional] performs prepare transform and change (update) Image Metadata in current folder (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT  and MY_P_UTILS_SCRIPTS\image_organizer.py)
+rem py_imgs_metadata_update.bat [output_path|optional] performs prepare transform and change (update) Image Metadata in subfolders of current folder (using setenv.bat MY_P_PHOTO_OUTPUT_ROOT  and MY_P_UTILS_SCRIPTS\image_organizer.py)
 
 rem create a script setenv.bat (just like \utils_xs\templates\myenv_template.bat )
 rem put it into executable PATH and call it setenv.bat
@@ -78,7 +78,7 @@ rem MY_PRINT_LEVEL DEBUG INFO WARNING ERROR is usuaklly set by setenv.bat but ca
 rem set MY_PRINT_LEVEL=DEBUG
 rem in case no p_source is given then the current path is used
 rem "cmd_params=--action_show_args -prepare -transform -change"
-set "cmd_params=-prepare -transform -change"
+set "cmd_params=-prepare -transform -change --recursive"
 echo %C_H%RUN %C_PY%%py_program% %cmd_params%%C_0%
 python %py_program% %cmd_params%
 set p1=

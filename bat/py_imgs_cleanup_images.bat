@@ -71,7 +71,7 @@ rem MY_PRINT_LEVEL DEBUG INFO WARNING ERROR is usuaklly set by setenv.bat but ca
 rem set MY_PRINT_LEVEL=DEBUG
 rem MY_P_EXIFTOOL_TARGET (folder containing all images) is defined in setenv.bat
 rem set "cmd_params=--action-cleanup-images --action-show-args --recursive -src %MY_P_EXIFTOOL_TARGET%"
-set "cmd_params=--action-cleanup-images --recursive -src %path_src%"
+set "cmd_params=--action-cleanup-images --recursive -src "%path_src%""
 echo %C_H%RUN %C_PY%%py_program% %cmd_params%%C_0%
 python %py_program% %cmd_params%
 set p1=
