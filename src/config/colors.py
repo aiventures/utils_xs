@@ -4,6 +4,10 @@ Date of generation: 2026-01-12 08:59:47
 
 # Auto-generated from batch color definitions
 ESC = "\033"
+COL_BOLD = f"{ESC}[1m"
+COL_UNDERLINE = f"{ESC}[4m"
+COL_RESET = f"{ESC}[0m"
+
 NUM_ARGS_COLORS = f"0"
 COL_TEST = f"{ESC}[38;2;229,229;229m"
 COL_GREEN_DARK = f"{ESC}[38;5;34m"
