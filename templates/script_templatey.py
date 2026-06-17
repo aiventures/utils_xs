@@ -1,4 +1,4 @@
-"""markdown_parser.py parsing and searching markdown"""
+"""script_template.py boilerplate code to write a script including arfparse arguments"""
 
 from __future__ import annotations
 import argparse
