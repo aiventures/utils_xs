@@ -1,7 +1,15 @@
 # libs for locl testing 
+# https://pypi.org/project/pylint
 pylint==3.2.2
+# https://pypi.org/project/pytest
 pytest>=8.2.1
+# https://pypi.org/project/pytest-cov
 pytest-cov>=5.0.0
+# https://pypi.org/project/pytest-mock
 pytest-mock==3.14.0
+# https://pypi.org/project/ruff
 ruff>=0.6.1
+# https://pypi.org/project/keyring
 keyring>=25.6.0
+# https://pypi.org/project/python-dotenv/
+python-dotenv[cli]

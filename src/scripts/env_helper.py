@@ -11,9 +11,11 @@ from config.colors import C_0, C_E, C_W
 MY_ENV_BOOTSTRAP = "MY_ENV_BOOTSTRAP"
 MY_F_MYENV_JSON = "MY_F_MYENV_JSON"
 
+# TODO Add getting the json config file
+
 
 def _parse_env(args: dict) -> Tuple[Optional[str], Optional[str]]:
-    """Parses ENV Variables from input string
+    """Parses ENV Variables from input string "<key> <value string>"
     if params is a string of 'keyxy this is a value' it will return
     (keyxy,this is a value)
     if params only contains a key like keyxy it wil try to get it from environment
