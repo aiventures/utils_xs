@@ -10,6 +10,7 @@ import sys
 import re
 import traceback
 import logging
+
 from os import listdir
 from copy import deepcopy
 from datetime import datetime as DateTime
@@ -25,6 +26,9 @@ from bs4 import BeautifulSoup, Tag
 # from configparser import ConfigParser
 from dateutil import parser as date_parser
 from config.color_logger import setup_color_logging
+from libs.environment import Environment, MY_ENV_PRINT_LEVEL, F_MARKDOWN_TEST
+from libs.helper import Persistence
+
 
 # ANSI color codes
 from config.colors import (
@@ -69,6 +73,9 @@ RUN_ACTION_TEST: str = "action_test"
 setup_color_logging(use_color=True, use_emoji=True, indent=120)
 logger = logging.getLogger(__name__)
 
+# Place a .env file with F_MARKDOWN_TEST containing the path to a sample markdown
+environment = Environment()
+
 
 class MarkDownParser:
     """Parsing Markdown Documents"""
@@ -82,6 +89,48 @@ class MarkDownParser:
 
         self._actions = {RUN_ACTION_TEST: action_test}
         self._f_markdown: Path = Path(f_markdown).absolute()
+        self._lines: dict = {}
+        self._index: dict = {}
+        # read the markdown and create the title index
+        self._read_markdown()
+        self._create_title_index()
+
+    def _read_markdown(self) -> None:
+        """reads the markdown file"""
+        _lines = Persistence.read_txt_file(self._f_markdown, comment_marker=None, skip_blank_lines=False)
+        logger.debug(f"Read [{len(_lines)}] lines from file [{str(self._f_markdown)}]")
+        self._lines = {index: value for index, value in enumerate(_lines, start=1)}
+
+    def _create_title_index(self) -> None:
+        """reads the markdown and creates a toc index for each line (hierarchy)
+        Given a list of markdown lines, return a dictionary:
+        line_number -> list of active header hierarchy at that line.
+        """
+        header_stack = []  # e.g. ["h1", "h1.1", "h1.1.1"]
+        result = {}
+
+        header_regex = re.compile(r"^(#{1,6})\s+(.*)$")
+
+        for idx, line in self._lines.items():
+            match = header_regex.match(line)
+            if match:
+                hashes, title = match.groups()
+                level = len(hashes)
+
+                # Ensure stack is correct length
+                if len(header_stack) < level:
+                    # Extend stack
+                    header_stack.extend([None] * (level - len(header_stack)))
+                else:
+                    # Trim deeper levels
+                    header_stack = header_stack[:level]
+
+                header_stack[level - 1] = title.strip()
+
+            # Store a *copy* of the current hierarchy for this line
+            result[idx] = header_stack.copy()
+            print(f"{idx}: {header_stack}")
+        self._index = result
 
     @classmethod
     def create_markdown_parser(cls, args: argparse.Namespace) -> Optional[MarkDownParser]:
@@ -105,6 +154,8 @@ class MarkDownParser:
     def action_test(self) -> None:
         """Runs the test actions, will be called programmatically"""
         logger.debug("start")
+        # title_index = self._create_title_index()
+        # TODO
         pass
 
     @staticmethod
@@ -177,8 +228,7 @@ def main(args_overwrite: Optional[list[str]] = None) -> None:
     args = MarkDownParser.argparse_set_defaults(args)
 
     # set print level / default is info
-    if os.environ.get("MY_PRINT_LEVEL") is None:
-        set_print_level(args.print_level, show_emoji=True)
+    set_print_level(environment.get(MY_ENV_PRINT_LEVEL, "DEBUG"), show_emoji=True)
 
     if args.action_show_args:
         print_json(vars(args), "ARGPARSER SETTINGS")
@@ -190,9 +240,14 @@ def main(args_overwrite: Optional[list[str]] = None) -> None:
 
 if __name__ == "__main__":
     logger.setLevel(logging.DEBUG)
+    # just for testing import a path pointing to a local markdown file
+
     if True:
+        f_markdown_test = environment.get(F_MARKDOWN_TEST, None, check="file")
+        if not f_markdown_test:
+            sys.exit(0)
         # testing the module
-        args = ["--action_show_args", "--action_test", "--print_level", "DEBUG"]
+        args = ["-f", f_markdown_test, "--action_show_args", "--action_test", "--print_level", "DEBUG"]
         main(args)
     else:
         main()
