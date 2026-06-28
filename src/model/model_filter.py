@@ -9,11 +9,13 @@ from pydantic import BaseModel, Field
 # type definitions
 
 IncludeLiteral = Literal["include", "exclude"]
+BoolOpType = Annotated[Literal["AND", "OR", "NOT", "XOR", "NAND", "NOR"], "Filter being a boolean OPERATOR"]
 IncludeType = Annotated[IncludeLiteral, "Filter to Include/Exclude Search Result"]
-FilterType = Annotated[Literal["text", "numerical"], "Type Of Filter"]
+FilterType = Annotated[Literal["text", "numerical", "composite", "regex"], "Type Of Filter"]
 FilterTextOperation = Annotated[Literal["contains", "exact", "regex"], "Type Of Text Filter"]
-
-# AnyOrAllType = Annotated[Literal["any", "all"], "Filter to Control whether ALL or ANY filters must match"]
+LogicalOperator = Annotated[
+    Literal["and", "or"], "Logical Operator to control whether ALL (and) or ANY (or) filters must match"
+]
 # OperatorMin = Annotated[Literal["gt", "ge", "eq"], "Numerical Filter Lower Bound: greater than, greater equal, equal"]
 # OperatorMax = Annotated[Literal["lt", "le", "eq"], "Numerical Filter Upper Bound: lower than, lower equal, equal"]
 
@@ -21,12 +23,15 @@ FilterTextOperation = Annotated[Literal["contains", "exact", "regex"], "Type Of 
 class BaseFilterModel(BaseModel):
     """Atomic Filter as Base Class for other filter types"""
 
-    # key and description of filter
+    type: FilterType = "text"
+    # key to get a unique id for the Filter
     key: Optional[str] = None
+    # filter description (information)
     description: Optional[str] = None
-    filter_type: FilterType = "text"
     # group assignment
-    groups: Optional[List[Any] | str] = None  # assignment to a filter group
+    groups: List[str] = []  # assignment to a filter group
+    # AND/OR filter link: match for any or all within a filter group or a FilterList
+    bool_op: Optional[BoolOpType] = "OR"
     # include or exclude filter result (NOT logic)
     include: Optional[IncludeType] = "include"
     # if set any None values to be tested will be ignored and filter is passed
@@ -36,10 +41,25 @@ class BaseFilterModel(BaseModel):
 class StrFilterModel(BaseFilterModel):
     """Atomic String filter model"""
 
-    type = "text"
-    operation: FilterTextOperation = "contains"
-    filter: Optional[str] = None
+    type: FilterType = "text"
+    action: FilterTextOperation = "contains"
+    value: Optional[str] = None
     ignorecase: bool = True
+
+
+# Filter = Annotated[
+#     StrFilterModel | NumFilterModel,
+#     Field(discriminator="type")
+# ]
+
+FilterModel = Annotated[StrFilterModel, Field(discriminator="type")]
+
+# class Query(BaseModel):
+#     filter: Filter
+
+# q = Query(filter={"type": "numerical", "value": 5})
+# type(q.filter)
+# # → NumFilterModel
 
 
 # class SimpleStrFilterModel(BaseModel):
