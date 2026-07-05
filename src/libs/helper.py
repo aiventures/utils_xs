@@ -11,6 +11,7 @@ from json import JSONDecodeError
 # import datetime
 from datetime import timedelta, timezone
 from datetime import datetime as DateTime
+from zoneinfo import ZoneInfo
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,10 +19,13 @@ from typing import Any, Dict, List, Union, Optional, Literal
 from zoneinfo import ZoneInfo
 from configparser import ConfigParser
 from dateutil import parser as date_parser
+from config.color_logger import setup_color_logging
+
 
 # ANSI color codes
 from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H
 
+setup_color_logging(use_color=True, use_emoji=True, indent=120)
 logger = logging.getLogger(__name__)
 
 # byte order mark for some utf8 file types
@@ -70,7 +74,9 @@ class Helper:
             print()
 
     @staticmethod
-    def format_timestamp(timestamp: int, timezone_s: str = "Europe/Berlin", format_s: str = "%Y:%m:%d %H:%M:%S") -> str:
+    def format_timestamp(
+        timestamp: Optional[int] = None, timezone_s: str = "Europe/Berlin", format_s: str = "%Y:%m:%d %H:%M:%S"
+    ) -> str:
         """
         Convert a Unix timestamp to a formatted date string in a specified timezone.
 
@@ -78,6 +84,7 @@ class Helper:
         - timestamp (int): The Unix timestamp to convert. Can be either:
             - 10 digits (seconds since epoch)
             - 13 digits (milliseconds since epoch)
+         If Timestamo is None, current timestamp is used
         - timezone_str (str): IANA timezone name (e.g., "Europe/Berlin"). Defaults to "Europe/Berlin".
         - fmt (str): Format string for output, following Python's strftime directives.
             Defaults to "%Y:%m:%d %H:%M:%S".
@@ -88,8 +95,10 @@ class Helper:
         Raises:
         - ValueError: If the timestamp is not 10 or 13 digits, or if the timezone is invalid.
         """
+        _zone_info = ZoneInfo(timezone_s)
+        _timestamp: int = timestamp if timestamp is not None else DateTime.now(_zone_info)
 
-        ts_str = str(timestamp)
+        ts_str = str(_timestamp)
         if len(ts_str) == 13:
             timestamp /= 1000
         elif len(ts_str) != 10:
@@ -562,7 +571,7 @@ class Persistence:
             lines (Union[str, List[str]]): Content to write. If string, converted to list.
         """
         if lines is None:
-            # TODO add debug message
+            logger.debug(f"No lines to save were passed, file [{str(filepath)}]")
             return
 
         _filepath = filepath
