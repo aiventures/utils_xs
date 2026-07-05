@@ -775,7 +775,11 @@ class ExifToolFieldsMapper:
         LensModel: AF 28/4.5 XF
         """
         # TODO Refactor / List of curated manual lenses in a different location / read as a json
-        manual_lenses = {"LENSBABY22": "Lensbaby Sweet 22 F/3.5", "LENSBABY_TRIO_28": "Lensbaby Trio 28 F/3.5"}
+        manual_lenses = {
+            "LENSBABY22": "Lensbaby Sweet 22 F/3.5",
+            "LENSBABY_TRIO_28": "Lensbaby Trio 28 F/3.5",
+            "TTARTISAN_TILT_35": "TT Artisan 35 F/1.4 Tilt",
+        }
         lens_model = self._metadata_exif.get("LensModel", "")
         lens_info = self._metadata_exif.get("LensInfo", "unknown")
         lens_make = self._metadata_exif.get("LensMake", "")
@@ -788,6 +792,9 @@ class ExifToolFieldsMapper:
                     return manual_lenses["LENSBABY22"]
                 if "28" in lens_info:
                     return manual_lenses["LENSBABY_TRIO_28"]
+            elif "artisan" in lens_model:
+                if "35" in lens_info:
+                    return manual_lenses["TTARTISAN_TILT_35"]
 
         return f"{lens_make.strip()} {lens_model}"
 
