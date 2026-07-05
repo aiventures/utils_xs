@@ -11,7 +11,7 @@ from model.model_filter import (
     FilterType,
     BoolOpType,
 )
-from typing import Optional, Any
+from typing import Optional, Any, Dict, List
 import logging
 import re
 from re import Pattern
@@ -64,7 +64,7 @@ class Filter(ABC):
         return self._filter.ignore_none
 
     @abstractmethod
-    def match(self, value: Optional[Any]) -> bool:
+    def match(self, value: Optional[Any]) -> Optional[bool]:
         """Matching Method"""
         return False
 
@@ -104,12 +104,16 @@ class StrFilter(Filter):
 
         self._regex_flag = re.IGNORECASE if ignorecase else re.NOFLAG
 
-    def match(self, value: Optional[Any]) -> bool:
+    def match(self, value: Optional[Any]) -> Optional[bool]:
         """Applies the filter and checks for passing filter"""
         _passed: bool = False
         # test against none values
         if value is None or self._filter.value is None:
             return True if self._filter.ignore_none else False
+
+        # return None in case type is not matching
+        if not isinstance(value, str):
+            return None
 
         _value: str = str(value).lower() if self._filter.ignorecase else str(value)
         _filter: str = self._filter.value.lower() if self._filter.ignorecase else self._filter.value
@@ -134,19 +138,70 @@ class StrFilter(Filter):
         return self._filter.model_dump_json()
 
 
-class FilterList(Filter):
+class FilterList:
     """Use a group a list of filters to do the filtering on a single value"""
 
     def __init__(self, filters: list[Filter]):
+        """Constructor."""
         self._filters: list[Filter] = filters
 
-    def match(self, value):
-        for _filter in self._filters:
-            _filter.match(value)
+    def _evaluate_matches(self, match_dict: Dict[BoolOpType, List]) -> bool:
+        """calculates the logical results"""
+        _match_and: list[bool] = []
+        _match_or: list[bool] = []
+        _match_xor: list[bool] = []
 
-        return super().match(value)
+        for op_type, filter_results in match_dict.items():
+            _match: bool = False
+            if op_type == "AND":
+                _match_and.append(all(filter_results))
+            elif op_type == "OR":
+                _match_or.append(any(filter_results))
+            elif op_type == "NAND" or op_type == "NOT":
+                _match_and.append(not all(filter_results))
+            elif op_type == "NOR":
+                _match_or.append(not any(filter_results))
+            elif op_type == "XOR":
+                _match = True if sum(filter_results) == 1 else False
+                _match_xor.append(_match)
+            elif op_type == "NXOR":
+                _match = False if sum(filter_results) == 1 else True
+                _match_xor.append(_match)
 
-    # TODO add match by group
+        # And Operations are false
+        if len(_match_and) > 0 and all(_match_and) is False:
+            return False
+
+        # Any Operation is False
+        if len(_match_or) > 0 and any(_match_or) is False:
+            return False
+
+        # XOR Operation is False
+        if len(_match_xor) > 0 and any(_match_xor) is False:
+            return False
+
+        return True
+
+    def match(self, value: Optional[Any], group: Optional[str] = None) -> Optional[bool]:
+        """iterate over all filters and return a matching result."""
+        # dict over logic operators
+        _match_dict: Dict[BoolOpType, List] = {}
+        # get lists of matches for several logical operators
+
+        for flt in self._filters:
+            # evaluate by filter group. If None use all filters
+            if group is not None and group not in flt.groups:
+                continue
+            _match = flt.match(value)
+            if _match is None:
+                continue
+            _match_dict.setdefault(flt.bool_op, []).append(_match)
+
+        # return None if no matching operations were found
+        if len(_match_dict) == 0:
+            return None
+
+        return self._evaluate_matches(_match_dict)
 
 
 if __name__ == "__main__":
