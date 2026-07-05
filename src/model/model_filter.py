@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 # type definitions
 
 IncludeLiteral = Literal["include", "exclude"]
-BoolOpType = Annotated[Literal["AND", "OR", "NOT", "XOR", "NAND", "NOR"], "Filter being a boolean OPERATOR"]
+BoolOpType = Annotated[Literal["AND", "OR", "NOT", "XOR", "NAND", "NOR", "NXOR"], "Filter being a boolean OPERATOR"]
 IncludeType = Annotated[IncludeLiteral, "Filter to Include/Exclude Search Result"]
 FilterType = Annotated[Literal["text", "numerical", "composite", "regex"], "Type Of Filter"]
 FilterTextOperation = Annotated[Literal["contains", "exact", "regex"], "Type Of Text Filter"]

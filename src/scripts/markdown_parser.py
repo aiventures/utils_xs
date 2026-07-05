@@ -129,12 +129,11 @@ class MarkDownParser:
 
             # Store a *copy* of the current hierarchy for this line
             result[idx] = header_stack.copy()
-            print(f"{idx}: {header_stack}")
         self._index = result
 
     @classmethod
     def create_markdown_parser(cls, args: argparse.Namespace) -> Optional[MarkDownParser]:
-        """create an image Organizer instance"""
+        """create an markdown parser instance"""
         logger.debug("start")
         arg_dict = vars(args)
 
