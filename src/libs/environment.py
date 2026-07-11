@@ -3,13 +3,12 @@
 # use a .env file and place it into utils_xs root folder
 import os
 import re
-from dotenv import dotenv_values
-from typing import Optional, Literal, Union
-from pathlib import Path
-from libs.helper import Helper,Persistence
 import logging
 import json
-
+from typing import Optional, Literal, Union
+from pathlib import Path
+from dotenv import dotenv_values
+from libs.helper import Helper, Persistence
 from config.color_logger import setup_color_logging
 
 # ensure root logger will use colored logger
@@ -35,12 +34,13 @@ DEBUG_LEVEL: dict = {
     "FATAL": logging.FATAL,
 }
 
-UNSAFE = re.compile(r'[ \t#\$\\]|^\s|\s$')
+UNSAFE = re.compile(r"[ \t#\$\\]|^\s|\s$")
+
 
 class Environment:
     """Wrapper around Environment."""
 
-    def __init__(self, env_dict: dict[str, Union[str,list]] = {}, f_dotenv: Optional[str] = None, as_env: bool = True):
+    def __init__(self, env_dict: dict[str, Union[str, list]] = {}, f_dotenv: Optional[str] = None, as_env: bool = True):
         """Constructor.
         Also allows to pass list as environment values and will treat first element as value and the second one as comment
 
@@ -82,9 +82,9 @@ class Environment:
             return
 
         for k, v in self._environment.items():
-            if isinstance(v,str):
+            if isinstance(v, str):
                 os.environ[k] = v
-            elif isinstance(v,list):#
+            elif isinstance(v, list):  #
                 if len(v) > 0:
                     os.environ[k] = v[0]
             else:
@@ -92,21 +92,21 @@ class Environment:
 
             logger.debug(f"Setting Environment {k:<20}: {v}")
 
-    def _get_dotenv_quotes(self,value: str) -> str:
-        """ for dotenv files decide whether quotes should be used, returns the quotes   """
+    def _get_dotenv_quotes(self, value: str) -> str:
+        """for dotenv files decide whether quotes should be used, returns the quotes"""
         if bool(UNSAFE.search(value)):
             return '"'
         else:
-            return ''
+            return ""
 
     def save_environemnt(
         self, f_out: Union[str, Path], filetype: Literal["win", "sh", "text", "dotenv", "json"] = "text"
-    ) ->None:
+    ) -> None:
         """Saves the environment into a file (eiter as windows command file, linux shell,json, dotenv or as single files)"""
         # saving to a single or multiple files
-        files_out:dict = {}
-        out_lines:list[str]=[]
-        out_dict:dict={}
+        files_out: dict = {}
+        out_lines: list[str] = []
+        out_dict: dict = {}
 
         _f_out: Path = Path(f_out).absolute()
         if _f_out.is_dir() and filetype != "text":
@@ -118,28 +118,26 @@ class Environment:
             )
             return None
         elif filetype == "text" and not _f_out.is_dir():
-            logger.error(
-                f"[{str(_f_out)}] is not a path, supply a ath for environment files of type text"
-            )
+            logger.error(f"[{str(_f_out)}] is not a path, supply a ath for environment files of type text")
             return None
 
         # get the comment character
-        _comment_dict:dict{"win":"rem","sh":"#","dotenv":"#","text":"","json":""}
-        _comment_prefix=_comment_dict.get(filetype,"")
+        _comment_dict: dict = {"win": "rem", "sh": "#", "dotenv": "#", "text": "", "json": ""}
+        _comment_prefix = _comment_dict.get(filetype, "")
         _title: str = f"Env Created using environment.py on {Helper.format_timestamp()}"
-        if len(_comment)>0:
+        if len(_comment_prefix) > 0:
             out_lines.append(f"{_comment_prefix} {_title}")
 
         for env_key, env_value in self._env_dict.items():
-            _value:Optional[str] = None
-            _comment:Optional[str]=None
-            if isinstance(env_value,str):
-                _value=env_value
-            elif isinstance(env_value,list):
-                if len(env_value)>0:
-                    _value=env_value[0]
-                if len(env_value)>1:
-                    _comment=env_value[1]
+            _value: Optional[str] = None
+            _comment: Optional[str] = None
+            if isinstance(env_value, str):
+                _value = env_value
+            elif isinstance(env_value, list):
+                if len(env_value) > 0:
+                    _value = env_value[0]
+                if len(env_value) > 1:
+                    _comment = env_value[1]
             elif env_value is not None:
                 _value = str(env_value)
             else:
@@ -156,23 +154,23 @@ class Environment:
                 out_lines.append(f'SET "{env_key}={_value}"')
             elif filetype == "dotenv":
                 _dotenv_quote = self._get_dotenv_quotes(env_value)
-                out_lines.append(f'{env_key}={_dotenv_quote}{_value}{_dotenv_quote}')
+                out_lines.append(f"{env_key}={_dotenv_quote}{_value}{_dotenv_quote}")
             elif filetype == "text":
                 # simply create a new file containing the value and filename
-                files_out[f_out.joinpath(env_key.strip())]=_value.strip()
+                files_out[f_out.joinpath(env_key.strip())] = _value.strip()
             elif filetype == "json":
-                out_dict[env_key.strip()]=_value.strip()
+                out_dict[env_key.strip()] = _value.strip()
             else:
                 logger.warning(f"Invalid filetype [{filetype}] passed, skip creation of environment vlaue [{env_key}]")
 
         # now prepare the env values for saving
         if filetype == "json":
-            Persistence.save_json(_f_out,out_dict)
+            Persistence.save_json(_f_out, out_dict)
         elif filetype == "text":
-            for _file,_value in files_out.items():
-                Persistence.save_txt(_file,str(_value).strip)
+            for _file, _value in files_out.items():
+                Persistence.save_txt(_file, str(_value).strip)
         else:
-            Persistence.save_txt(_f_out,out_lines)
+            Persistence.save_txt(_f_out, out_lines)
 
     def get(
         self,
