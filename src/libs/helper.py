@@ -4,6 +4,7 @@ import os
 import sys
 import logging
 import re
+import difflib
 
 import json
 from json import JSONDecodeError
@@ -23,7 +24,20 @@ from config.color_logger import setup_color_logging
 
 
 # ANSI color codes
-from config.colors import C_0, C_E, C_Q, C_I, C_T, C_PY, C_P, C_H
+from config.colors import (
+    C_E,
+    C_Q,
+    C_I,
+    C_T,
+    C_PY,
+    C_P,
+    C_H,
+    C_DIFF_ADD,
+    C_DIFF_DEL,
+    C_DIFF_UNCHANGED,
+    COL_RESET,
+    colorize,
+)
 
 setup_color_logging(use_color=True, use_emoji=True, indent=120)
 logger = logging.getLogger(__name__)
@@ -34,6 +48,65 @@ BOM = "\ufeff"
 
 class Helper:
     """Some Helper Functions"""
+
+    @staticmethod
+    def inline_diff(old, new, add_begin="#add#", add_end="#addend#", del_begin="#del#", del_end="#delend#"):
+        """
+        Produce an inline diff between old and new strings using difflib.
+        Additions and deletions are wrapped in the provided markers.
+
+        Created using
+        Write a python function using difflib that will do:
+        - Receive input strings old and new
+        - get begin and end markers to denote additions and deletions with default values in brackets add_begin (#add#), add_end (#addend#) ,delete_begin (#del#) ,delete_end (#delend#)
+        - return the inline diff as out string, example
+        old: this is a string
+        new: this is new string
+        out: this is #del#a#delend# #add#new#addend# string
+        """
+
+        # Tokenize by whitespace to preserve word boundaries
+        old_tokens = old.split()
+        new_tokens = new.split()
+
+        matcher = difflib.SequenceMatcher(None, old_tokens, new_tokens)
+        out = []
+
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                out.extend(old_tokens[i1:i2])
+
+            elif tag == "delete":
+                deleted = " ".join(old_tokens[i1:i2])
+                out.append(f"{del_begin}{deleted}{del_end}")
+
+            elif tag == "insert":
+                added = " ".join(new_tokens[j1:j2])
+                out.append(f"{add_begin}{added}{add_end}")
+
+            elif tag == "replace":
+                deleted = " ".join(old_tokens[i1:i2])
+                added = " ".join(new_tokens[j1:j2])
+                out.append(f"{del_begin}{deleted}{del_end}")
+                out.append(f"{add_begin}{added}{add_end}")
+
+        return " ".join(out)
+
+    @staticmethod
+    def diff_str(old: str, new: str, show: bool = False) -> str:
+        """color formats a diff string"""
+        out = Helper.inline_diff(
+            old,
+            new,
+            add_begin=C_DIFF_ADD,
+            add_end=f"{C_DIFF_UNCHANGED}",
+            del_begin=f"{C_DIFF_DEL}",
+            del_end=f"{COL_RESET}{C_DIFF_UNCHANGED}",
+        )
+        out = colorize(out, "C_DIFF_UNCHANGED")
+        if show:
+            print(out)
+        return out
 
     @staticmethod
     def show_progress(num_passed: int, total: int, text: str = None) -> None:
@@ -68,7 +141,9 @@ class Helper:
 
         percent_display = int(percent * 100)
         output_text = text if text is not None else "Progress"
-        sys.stdout.write(f"\r{C_T}{output_text}: {progressbar} {percent_display}% {C_I}({num_passed}/{total}){C_0}")
+        sys.stdout.write(
+            f"\r{C_T}{output_text}: {progressbar} {percent_display}% {C_I}({num_passed}/{total}){COL_RESET}"
+        )
         sys.stdout.flush()
         if num_passed == total:
             print()
@@ -333,7 +408,7 @@ class CmdRunner:
                 process.wait()
             return process.returncode == 0
         except Exception as e:
-            print(f"{C_E}Failed to run exiftool: {e}{C_0}")
+            print(f"{C_E}Failed to run exiftool: {e}{COL_RESET}")
             return False
 
     @staticmethod
@@ -385,21 +460,21 @@ class CmdRunner:
                         _s = _s.encode("latin1").decode("utf-8")
                     out.append(_s)
                     if show:
-                        print(f"{c_std}{prefix_out}{_s}{C_0}")
+                        print(f"{c_std}{prefix_out}{_s}{COL_RESET}")
                 if stderr_line:
                     _s = stderr_line.strip()
                     if decode:
                         _s = _s.encode("latin1").decode("utf-8")
                     out.append(_s)
                     if show:
-                        print(f"{c_err}{prefix_err}{_s}{C_0}")
+                        print(f"{c_err}{prefix_err}{_s}{COL_RESET}")
 
                 if not stdout_line and not stderr_line and process.poll() is not None:
                     break
             return out
 
         except Exception as e:
-            print(f"{C_E}Failed to run command: {e}{C_0}")
+            print(f"{C_E}Failed to run command: {e}{COL_RESET}")
 
         return out
 
@@ -520,7 +595,7 @@ class Persistence:
         _filepath = Path(filepath)
 
         if not _filepath.is_file():
-            print(f"{C_E} {_filepath} is not a valid file{C_0}")
+            print(f"{C_E} {_filepath} is not a valid file{COL_RESET}")
             return []
 
         lines = []
@@ -585,9 +660,9 @@ class Persistence:
         try:
             with _filepath.open("w", encoding="utf-8") as f:
                 f.write(out)
-            print(f"{C_H}Saved text file: {C_P}{_filepath}{C_0}")
+            print(f"{C_H}Saved text file: {C_P}{_filepath}{COL_RESET}")
         except Exception as e:
-            print(f"{C_E}Failed to save file {_filepath}: {e}{C_0}")
+            print(f"{C_E}Failed to save file {_filepath}: {e}{COL_RESET}")
 
     @staticmethod
     def save_json(filepath: Path | str, data: Optional[Dict[str, Any] | list]) -> None:
@@ -638,12 +713,12 @@ class Persistence:
         """
         folder = folder or Path.cwd()
         if not folder.exists() or not folder.is_dir():
-            print(f"{C_E}Invalid folder: {folder}{C_0}")
+            print(f"{C_E}Invalid folder: {folder}{COL_RESET}")
             return {}
 
         url_dict = {}
         url_files = list(folder.glob("*.url"))
-        print(f"{C_T}Found {len(url_files)} .url files in {C_P}{folder}{C_0}")
+        print(f"{C_T}Found {len(url_files)} .url files in {C_P}{folder}{COL_RESET}")
 
         for url_file in url_files:
             url = Persistence.read_internet_shortcut(str(url_file))
@@ -651,9 +726,9 @@ class Persistence:
                 if filter_substring is None or filter_substring.lower() in url.lower():
                     url_dict[url_file.name] = url
                 else:
-                    print(f"{C_E}Filtered out: {url_file.name} (URL does not match filter){C_0}")
+                    print(f"{C_E}Filtered out: {url_file.name} (URL does not match filter){COL_RESET}")
             else:
-                print(f"{C_E}No URL found in {url_file.name}{C_0}")
+                print(f"{C_E}No URL found in {url_file.name}{COL_RESET}")
 
         return url_dict
 
@@ -716,7 +791,7 @@ class Transformer:
         """
 
         if time_str is None:
-            time_str = input(f"{C_Q}Enter time string (hh:mm:ss): {C_0}").strip()
+            time_str = input(f"{C_Q}Enter time string (hh:mm:ss): {COL_RESET}").strip()
 
         try:
             parts = [int(p) for p in time_str.split(":")]
@@ -735,11 +810,11 @@ class Transformer:
             result = {"original": time_str, "utc": utc_str, "timestamp": timestamp_ms, "datetime": dt_utc}
             if filename:
                 Persistence.save_json(folder / filename, result)
-                print(f"{C_H}Saved timestamp to {C_P}{folder / filename}{C_0}")
+                print(f"{C_H}Saved timestamp to {C_P}{folder / filename}{COL_RESET}")
             return result
 
         except Exception as e:
-            print(f"{C_E}Failed to parse time string: {e}{C_0}")
+            print(f"{C_E}Failed to parse time string: {e}{COL_RESET}")
             return None
 
 
@@ -754,4 +829,8 @@ if __name__ == "__main__":
     t = "2025:11:30 12:00:00"
     # UTC + OFFSET
     offset = Helper.get_utc_offset(t)
-    print(offset)
+    # print(offset)
+    # checking the diff feature
+    s_old = "this is a test from old"
+    s_new = "new string this is test new"
+    Helper.diff_str(s_old, s_new, show=True)

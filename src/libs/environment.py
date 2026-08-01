@@ -75,6 +75,7 @@ class Environment:
             return out
         out = dict(dotenv_values(self._f_dotenv))
         logger.debug(f"Values in dotenv environment [{self._f_dotenv}]\n{json.dumps(out, indent=4, default=str)}")
+        return out
 
     def create_environment(self) -> None:
         """creates the environment variables"""
