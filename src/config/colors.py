@@ -2,13 +2,19 @@
 Date of generation: 2026-01-12 08:59:47
 """
 
+from typing import Optional
+
 # Auto-generated from batch color definitions
+# https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences
+# Set background color	Next arguments are 48;5;<n> or 2;<r>;<g>;<b> (Default 49)
+# Set foreground color	Next arguments are 38;5;<n> or 2;<r>;<g>;<b>, see below (Default 39)
 ESC = "\033"
 COL_BOLD = f"{ESC}[1m"
 COL_UNDERLINE = f"{ESC}[4m"
+COL_STRIKETHROUGH = f"{ESC}[9m"
 COL_RESET = f"{ESC}[0m"
-
-NUM_ARGS_COLORS = f"0"
+COL_RESET_BG = f"{ESC}[49m"
+NUM_ARGS_COLORS = "0"
 COL_TEST = f"{ESC}[38;2;229,229;229m"
 COL_GREEN_DARK = f"{ESC}[38;5;34m"
 COL_GREEN_LIGHT = f"{ESC}[38;5;46m"
@@ -102,21 +108,105 @@ C_SC1 = f"{COL_PURPLE_MAGENTA_164}"
 C_O = f"{COL_BLUE_LIGHT}"
 C_0 = f"{COL_CYAN_PALE_195}"
 C_1 = f"{COL_BLUE_PALE_153}"
+# Color Title
 C_T = f"{COL_BLUE_SKY}"
+# Color Search
 C_S = f"{COL_CYAN_PURE_50}"
 C_SH = f"{COL_RED_STRAWBERRY_204}"
+# Color File
 C_F = f"{COL_ORANGE_214}"
+# Color Highlight
 C_H = f"{COL_WHITE_CREAM_230}"
+# Color Information
 C_I = f"{COL_CYAN_AQUA_14}"
+# Color Code or Python
 C_PY = f"{COL_GREEN_AQUA_85}"
+# Color Question
 C_Q = f"{COL_PINK_LILAC_177}"
+# Console Output
 C_PROG = f"{COL_PINK}"
-C_L = f"{C_BLU}"
+# Color Warning
 C_W = f"{C_YLL}"
+# Color Error
 C_E = f"{COL_RED}"
+# COLOR Search Index
+C_SI = f"{C_MAG}"
+# COLOR Line Index
+C_L = f"{C_PY}"
+# Coloring A Date
+C_D = f"{COL_BROWN_KHAKI_222}"
+# Coloring A Search Match
+C_M = f"{COL_RED_BRIGHT_196}"
+# Coloring A Text Line
+C_TX = f"{COL_WHITE_CREAM_230}"
+# Coloring A Context Tag
+C_C = f"{COL_GREEN_MINT_121}"
+# Coloring A Bread Crumb
+C_BR = f"{COL_CYAN_AQUA_14}"
+# DIFF COLOR DELETED
+C_DIFF_DEL = f"{COL_GRAY_246}{COL_STRIKETHROUGH}"
+# DIFF COLOR ADDED
+C_DIFF_ADD = f"{COL_ORANGE_214}"
+# DIFF COLOR UNCHANGED
+C_DIFF_UNCHANGED = f"{COL_CYAN_AQUA_14}"
+
+
+# TODO Also generate these methods
+def get_color_dict() -> dict:
+    """returns the color constants as a dict"""
+    color_dict = {
+        k: f"{v}" for k, v in globals().items() if (k.isupper() and (k.startswith("C_") or k.startswith("COL_")))
+    }
+    return color_dict
+
+
+# all colors in a color dict
+COLOR_DICT = get_color_dict()
+
+
+# get colored string
+# TODO add a logic for background colors
+def colorize(
+    s: str,
+    color: str,
+    reset_col: Optional[str] = "COL_RESET",
+    emoji: Optional[str] = None,
+    strikethrough: bool = False,
+    bold: bool = False,
+    underline: bool = False,
+) -> str:
+    """colorize a string based on the string and also reset the color"""
+    out = ""
+    if not isinstance(s, str):
+        return s
+    col: str = COLOR_DICT.get(color, "")
+    col_reset = "" if reset_col is None else COLOR_DICT.get(reset_col, "COL_RESET")
+
+    if strikethrough:
+        col += COL_STRIKETHROUGH
+    if bold:
+        col += COL_BOLD
+    if underline:
+        col += COL_UNDERLINE
+    e_: str = emoji if emoji else ""
+    # always reset background as the default reset sometimes doesn't seem to work
+    col_reset_bg = COL_RESET_BG if len(col) > 0 else ""
+    # now construct an output string and add reset sequence if needed
+    # this also allows to have multiple formatting color codes like C_DIFF_DEL
+    out = f"{e_}{col}{s}{col_reset_bg}{col_reset}"
+    if not COL_RESET in out:
+        # check if there are any additional formattings
+        if len([f for f in [COL_STRIKETHROUGH, COL_BOLD, COL_UNDERLINE] if f in out]) > 0:
+            out += COL_RESET
+    return out
 
 
 if __name__ == "__main__":
-    vars_dict = {k: f"{v}{k}{C_0}" for k, v in globals().items() if k.isupper()}
-    for _, v in vars_dict.items():
-        print(v + COL_DEFAULT)
+    # vars_dict = {k: f"{v}{k}{C_0}" for k, v in globals().items() if k.isupper()}
+    for k, v in COLOR_DICT.items():
+        print(colorize(k, k, reset_col="C_0"))
+    # testing the additional formatting options
+    print(colorize("STRIKTETHROUGH", color="C_PY", strikethrough=True, bold=False, underline=False))
+    print(colorize("BOLD", color="C_PY", strikethrough=False, bold=True, underline=False))
+    print(colorize("UNDERLINE", color="C_PY", strikethrough=False, bold=False, underline=True))
+    print(colorize("ALL FORMATTINGS", color="C_PY", strikethrough=True, bold=True, underline=True, emoji="🤡"))

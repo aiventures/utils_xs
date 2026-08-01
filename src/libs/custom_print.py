@@ -3,9 +3,10 @@
 import os
 import json
 from typing import Optional
+from datetime import datetime as DateTime
 
 # ANSI color codes
-from config.colors import C_0, C_E, C_I, C_PY, C_W, C_T, C_H, C_Q, C_F
+from config.colors import colorize
 
 MY_ENV_PRINT_LEVEL: str = "MY_PRINT_LEVEL"
 MY_ENV_PRINT_SHOW_EMOJI: str = "MY_PRINT_SHOW_EMOJI"
@@ -28,11 +29,11 @@ PRINT_LEVELS_EMOJIS: dict = {
 }
 
 PRINT_LEVELS_COLOR: dict = {
-    "CRITICAL": f"{C_E}",
-    "ERROR": f"{C_E}",
-    "WARNING": f"{C_W}",
-    "INFO": f"{C_I}",
-    "DEBUG": f"{C_PY}",
+    "CRITICAL": "C_E",
+    "ERROR": "C_E",
+    "WARNING": "C_W",
+    "INFO": "C_I",
+    "DEBUG": "C_PY",
 }
 
 
@@ -77,12 +78,12 @@ def get_printlevel_emoji(level: str) -> Optional[str]:
     return PRINT_LEVELS_EMOJIS[level_]
 
 
-def printcol(s: str, c: str = C_0, e: Optional[str] = "") -> Optional[str]:
+def printcol(s: str, c: str = "", e: Optional[str] = "", reset_col: str = "C_0") -> Optional[str]:
     """Custom Color Print statement including emoji"""
     if s is None:
         return
     e_ = "" if e is None else f"{e} "
-    s_ = f"{e_}{c}{s}{C_0}"
+    s_ = f"{e_}{colorize(s, c, reset_col)}"
     print(s_)
     return s_
 
@@ -107,7 +108,7 @@ def print_level(s: str, level: str) -> Optional[str]:
 
 
 def print_json(
-    d: dict, title: Optional[str] = None, lf: bool = False, debuglevel: str = "INFO", col_json: str = C_PY
+    d: dict, title: Optional[str] = None, lf: bool = False, debuglevel: str = "INFO", col_json: str = "C_PY"
 ) -> Optional[str]:
     """default printout of dictionaries"""
     if not isinstance(d, dict):
@@ -122,7 +123,7 @@ def print_json(
     data = json.dumps(d, indent=4, ensure_ascii=False, default=str)
     if title is not None:
         emoji = "🔢" if get_print_show_emoji() else None
-        printcol(title, C_T, emoji)
+        printcol(title, "C_T", emoji)
     printcol(data, col_json)
     return data
 
@@ -131,24 +132,28 @@ def inputc(s: str) -> str:
     """user input"""
     if s is None:
         return
-    s_ = f"{C_Q}{s}{C_F}> {C_0}"
+    s_ = f"{colorize(s, 'C_Q'), False} {colorize('>', 'C_F')} "
     return input(s_)
 
 
 def printt(s: str) -> str:
     """print title"""
     e = "🧿" if get_print_show_emoji() else None
-    return printcol(s, C_T, e)
+    return printcol(s, "C_T", e)
 
 
 def printh(s: str) -> str:
     """print highlight"""
-    return f"{C_H}{s}{C_0}"
+    s_ = colorize(s, "C_H")
+    print(s)
+    return s_
 
 
 def printpy(s: str) -> str:
     """print code"""
-    return f"{C_PY}{s}{C_0}"
+    s_ = colorize(s, "C_PY")
+    print(s)
+    return s_
 
 
 def printd(s: str) -> Optional[str]:
@@ -176,21 +181,81 @@ def printc(s: str) -> Optional[str]:
     return print_level(s, "CRITICAL")
 
 
+def print_infoline(
+    text: str,
+    index: Optional[int] = None,
+    line_number: Optional[int] = None,
+    num_digits: int = 4,
+    date: Optional[str] = None,
+    contexts: Optional[list | str] = None,
+    search_matches: Optional[list | str] = None,
+    breadcrumb: Optional[str] = None,
+    text_length: Optional[int] = None,
+    show: bool = True,
+) -> str:
+    """prints a colored information line in a standardized way."""
+    out: str = ""
+    # add collateral items
+    i_ = colorize(f"{str(index).zfill(num_digits)} ", "C_SI") if index else ""
+    l_ = colorize(f"L{str(line_number).zfill(num_digits)} ", "C_L") if line_number else ""
+    d_ = f"{colorize(f'[{date}]', 'C_D')} " if date else ""
+    c_ = ",".join(contexts) if isinstance(contexts, list) else contexts
+    c_ = f"{colorize(f'{c_}', 'C_C')} " if c_ else ""
+    t_ = colorize(f"{text.strip()} ", "C_TX")
+    b_ = "" if breadcrumb is None else colorize(f"[{breadcrumb}] ", "C_BR")
+    # finally colorize any search hits in the text
+    s_ = search_matches if isinstance(search_matches, list) else [search_matches]
+    t_ = t_.strip()
+    for m in search_matches:
+        t_ = t_.replace(m, colorize(m, "C_M", "C_TX"))
+    # fill up text with spaces
+    if text_length and len(t_) < text_length:
+        s_ = (text_length - len(t_)) * " "
+        t_ = f"{t_}{s_}"
+    out = f"{i_}{l_}{d_}{t_} {b_}{c_}".strip()
+    if show:
+        print(out)
+    return out
+
+
 if __name__ == "__main__":
     """ testdrive  """
     set_print_level("INFO", show_emoji=True)
-    printt("### LEVEl INFO ")
+    printt("X ### LEVEl INFO ")
     printd("DEBUG MESSAGE")
     printi("INFO MESSAGE")
     printw("WARNING MESSAGE")
     printe("ERROR MESSAGE")
     printc("CRITICAL MESSAGE")
     set_print_level("DEBUG", show_emoji=True)
-    printt("### LEVEl DEBUG ")
+    printt("Y ### LEVEl DEBUG ")
     printd("DEBUG MESSAGE")
     printi("INFO MESSAGE")
     printw("WARNING MESSAGE")
     printe("ERROR MESSAGE")
     printc("CRITICAL MESSAGE")
+    # checking the print of an information line
+    print_infoline(
+        text="hugo ist ein schelm",
+        index=43,
+        line_number=440,
+        num_digits=3,
+        date="2026/07/01",
+        contexts=["@context1"],
+        search_matches=["ist"],
+        breadcrumb="A>B>C",
+        text_length=80,
+        show=True,
+    )
+
+    print_infoline(
+        text="hugo ist ein schelm nummer2",
+        line_number=440,
+        num_digits=3,
+        search_matches=["ist"],
+        breadcrumb="A>B>C",
+        text_length=50,
+        show=True,
+    )
 
     pass
