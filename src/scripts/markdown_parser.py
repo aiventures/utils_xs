@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import argparse
+from argparse import ArgumentParser, Namespace
 import copy
 import datetime
 import json
@@ -31,21 +32,7 @@ from libs.helper import Persistence
 
 
 # ANSI color codes
-from config.colors import (
-    C_0,
-    C_B,
-    C_E,
-    C_F,
-    C_H,
-    C_I,
-    C_L,
-    C_P,
-    C_PY,
-    C_Q,
-    C_S,
-    C_T,
-    C_W,
-)
+from config.colors import colorize
 
 # get read/write path from env / create the json using bat2py.bat
 from config.constants import ENV_DICT
@@ -56,15 +43,8 @@ from config.constants import ENV_DICT
 # need to be set accordingly in environment to reflect certain debug levels
 from libs.custom_print import (
     print_json,
-    printd,
-    printe,
-    printw,
-    printt,
-    printh,
-    printi,
+    printcol,
     set_print_level,
-    printpy,
-    inputc,
 )
 
 RUN_ACTION_TEST: str = "action_test"
@@ -80,14 +60,13 @@ environment = Environment()
 class MarkDownParser:
     """Parsing Markdown Documents"""
 
-    def __init__(self, action_test: bool = False, f_markdown: Optional[str] = None):
+    def __init__(self, f_markdown: Optional[str] = None):
         """Constructor."""
-        self._actions: dict[bool] = {}
+        logger.debug(f"start, markdown [{f_markdown}]")
         if f_markdown is None:
-            logger.error("Markdown Filepath  --f_markdown is empty ")
+            logger.error("Markdown Filepath no filepath was referenced")
             return
 
-        self._actions = {RUN_ACTION_TEST: action_test}
         self._f_markdown: Path = Path(f_markdown).absolute()
         self._lines: dict = {}
         self._index: dict = {}
@@ -131,49 +110,67 @@ class MarkDownParser:
             result[idx] = header_stack.copy()
         self._index = result
 
-    @classmethod
-    def create_markdown_parser(cls, args: argparse.Namespace) -> Optional[MarkDownParser]:
-        """create an markdown parser instance"""
-        logger.debug("start")
-        arg_dict = vars(args)
+    def _get_markdown_dict(self) -> dict:
+        """transforms the data into an output dict"""
+        out = {}
+        return out
 
-        return cls(
-            action_test=arg_dict.get("action_test"),
-            f_markdown=arg_dict.get("f_markdown"),
-        )
+    def show(self):
+        """shows the markdown"""
+        # todo turn index into breadcrumbs
+        print(json.dumps(self._index, indent=4, default=str))
 
-    def run(self) -> None:
-        """runs all actions. will be defined by actions dict"""
-        logger.debug(f"Start actions {self._actions}")
-        for func, run in self._actions.items():
-            if run:
-                logger.debug(f"Running Action [{func}()]")
-                getattr(self, func)()
+        # print(json.dumps(self._lines, indent=4, default=str))
 
-    def action_test(self) -> None:
-        """Runs the test actions, will be called programmatically"""
-        logger.debug("start")
-        # title_index = self._create_title_index()
-        # TODO
         pass
 
-    @staticmethod
-    def argparse_set_defaults(args: argparse.Namespace) -> argparse.Namespace:
-        """Sets the argparse defaults if not already covered by defaults"""
+
+class MarkdownArgParser:
+    """command line input class wrapping the MarkdownParser class"""
+
+    def __init__(self, default_arg_values: Optional[dict] = None):
+        self._arg_parser: ArgumentParser = self.create_arg_parser()
+        self._args: dict[str, str] = {}
+        self._default_arg_values: dict = {} if default_arg_values is None else default_arg_values
+        self._markdown_parser: Optional[MarkDownParser] = None
+        logger.debug(f"Parser Constructor, default values: {self._default_arg_values}")
+
+    def show_args(self) -> bool:
+        """getter for  action_show_args"""
+        if self._args.get("action_show_args", False):
+            print_json(self._args, "ARGPARSER SETTINGS")
+
+    def run(self) -> None:
+        """Runs all actions."""
+        ignore_actions = ["action_show_args"]
+        # process all flags starting with an action prefix
+        for method, value in self._args.items():
+            if not method.startswith("action_") or method in ignore_actions:
+                continue
+            # run the method if it exists
+            if callable(getattr(self, method, None)) and value is True:
+                logger.debug(f"Running action [{method}], calling the method")
+                getattr(self, method)()
+
+    @property
+    def f_markdown(self) -> Optional[Path]:
+        """returns the absolute file path to the markdown file"""
+        f_markdown_ = Path(self._args.get("f_markdown", "invvalid_path")).absolute()
+        return f_markdown_ if f_markdown_.is_file() else None
+
+    def action_test(self):
+        """testing only"""
         logger.debug("start")
+        self._markdown_parser.show()
 
-        # modify default values ....
-
-        return args
-
-    @staticmethod
-    def build_arg_parser() -> argparse.ArgumentParser:
+    def create_arg_parser(self) -> ArgumentParser:
         """
         Command Line Interface to MarkdownParser
         Returns:
             argparse.ArgumentParser: Configured argument parser.
         """
-        parser = argparse.ArgumentParser(description="Markdown Parser Utility")
+        logger.debug("begin")
+        parser = ArgumentParser(description="Markdown Parser Utility")
 
         # used in main / OK
         parser.add_argument(
@@ -207,34 +204,45 @@ class MarkDownParser:
             default="INFO",
             help="Print Level (DEBUG,INFO,WARNING,ERROR), if not set as ENV MY_PRINT_LEVEL (Default: INFO)",
         )
+
         return parser
 
-
-def main(args_overwrite: Optional[list[str]] = None) -> None:
-    """Run the Markdown Parser"""
-
-    # parse from commmand line
-    parser = MarkDownParser.build_arg_parser()
+    def _set_defaults(self) -> None:
+        """Setting default values in case not supplied already"""
+        for key, default_value in self._default_arg_values.items():
+            if self._args.get(key) is not None:
+                continue
+            self._args[key] = default_value
 
     # overwrite arguments / https://stackoverflow.com/questions/54050343/how-to-set-variables-value-in-command-line-using-argparse-or-sys-avrg
     # myprog --foo 10 --bar x y z => parser.parse_args(["--flag", "value", "pos1", "pos2"])
-    args = None
-    if args_overwrite is None:
-        args = parser.parse_args()
-    else:
-        args = parser.parse_args(args_overwrite)
-    # set defaults
-    args = MarkDownParser.argparse_set_defaults(args)
+    def parse_args(self, args_list: Optional[list] = None) -> dict:
+        """parses args and returns args"""
+        if args_list is None:
+            self._args = vars(self._arg_parser.parse_args())
+        else:
+            self._args = vars(self._arg_parser.parse_args(args_list))
+        # also set some default values
+        self._set_defaults()
+        self._markdown_parser = MarkDownParser(self.f_markdown)
+        return self._args
+
+
+def main(args_overwrite: Optional[list[str]] = None, default_arg_values: Optional[dict] = None) -> None:
+    """Run the Markdown Parser"""
+
+    # parse from commmand line
+    arg_parser = MarkdownArgParser(default_arg_values)
+    _ = arg_parser.parse_args(args_overwrite)
 
     # set print level / default is info
     set_print_level(environment.get(MY_ENV_PRINT_LEVEL, "DEBUG"), show_emoji=True)
+    arg_parser.show_args()
+    arg_parser.run()
 
-    if args.action_show_args:
-        print_json(vars(args), "ARGPARSER SETTINGS")
-
-    # Run the Actions
-    markdown_parser = MarkDownParser.create_markdown_parser(args)
-    markdown_parser.run()
+    # # Run the Actions
+    # markdown_parser = MarkDownParser.create_markdown_parser(args)
+    # markdown_parser.run()
 
 
 if __name__ == "__main__":
