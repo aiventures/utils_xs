@@ -204,9 +204,13 @@ def print_infoline(
     t_ = colorize(f"{text.strip()} ", "C_TX")
     b_ = "" if breadcrumb is None else colorize(f"[{breadcrumb}] ", "C_BR")
     # finally colorize any search hits in the text
-    s_ = search_matches if isinstance(search_matches, list) else [search_matches]
+    if search_matches:
+        matches_ = search_matches if isinstance(search_matches, list) else [search_matches]
+    else:
+        matches_ = []
+
     t_ = t_.strip()
-    for m in search_matches:
+    for m in matches_:
         t_ = t_.replace(m, colorize(m, "C_M", "C_TX"))
     # fill up text with spaces
     if text_length and len(t_) < text_length:

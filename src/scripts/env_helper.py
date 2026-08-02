@@ -112,7 +112,7 @@ def bootstrap_env(show_env: bool = False, initialize: bool = False) -> dict:
 
     f_env_json = os.environ.get(MY_F_MYENV_JSON)
     if f_env_json is None:
-        print("There is no environment MY_F_MYENV_JSON containing path to ENV JSON")
+        print("There is no environment variable MY_F_MYENV_JSON containing path to ENV JSON")
         return {}
     if not os.path.isfile(f_env_json):
         print(f"There is no valid file defined for MY_F_MYENV_JSON [{f_env_json}]")
