@@ -15,15 +15,26 @@ from config.color_logger import setup_color_logging
 setup_color_logging(use_color=True, use_emoji=True, indent=120)
 logger = logging.getLogger(__name__)
 
-# here's a definition of defined Environment values as Reference
-# custom_print / CRITICAL,ERROR,WARNING,INFO,DEBUG
-MY_ENV_PRINT_LEVEL = "MY_ENV_PRINT_LEVEL"
+# here's a definition of defined Environment values for Reference to
+# be put into the .env file, for an example of .env content check the
+# /templates/.env_template file and adapt accordingly
 
 # setting the debug level
+# FATAL,CRITICAL,ERROR,WARNING,INFO,DEBUG
 MY_ENV_DEBUG_LEVEL = "MY_ENV_DEBUG_LEVEL"
+
+# custom_print / CRITICAL,ERROR,WARNING,INFO,DEBUG
+# /libs/print_LEVEL, allowed values
+# CRITICAL,ERROR,WARNING,INFO,DEBUG
+MY_ENV_PRINT_LEVEL = "MY_ENV_PRINT_LEVEL"
 
 # path to a markdown test file markdown_parser
 F_MARKDOWN_TEST = "F_MARKDOWN_TEST"
+
+# SETTING PATH To Store Temporary files
+# path to store locally buffered environment variables
+# so as to store them from python to command line
+MY_P_MYENV = "MY_P_MYENV"
 
 DEBUG_LEVEL: dict = {
     "DEBUG": logging.DEBUG,
@@ -53,9 +64,10 @@ class Environment:
             if f_dotenv is not None
             else Path(__file__).parent.parent.parent.joinpath(".env").absolute()
         )
+        logger.debug(f"Setting Environment from config file [{str(self._f_dotenv)}]")
         self._environment: dict = {}
         if not self._f_dotenv.is_file() and len(env_dict) == 0:
-            logger.warning(f"Path [{self._f_dotenv}] is nto a valid path and no env values were supplied")
+            logger.warning(f"Path [{str(self._f_dotenv)}] is not a valid path and no env values were supplied")
 
         # dictionary containing environment values
         self._env_dict: dict = env_dict
@@ -216,3 +228,5 @@ if __name__ == "__main__":
     environment = Environment()
     environment.get("KKK")
     environment.get("HUGOTEST")
+    x = environment.get("MY_P_MYENV", check="path")
+    print(x)
