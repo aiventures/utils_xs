@@ -5,7 +5,7 @@ import sys
 import logging
 import re
 import difflib
-
+from urllib.parse import quote
 import json
 from json import JSONDecodeError
 
@@ -44,6 +44,10 @@ logger = logging.getLogger(__name__)
 
 # byte order mark for some utf8 file types
 BOM = "\ufeff"
+
+
+# Allowed characters in a real path
+ALLOWED_PATH_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/\\._- ()~:")
 
 
 class Helper:
@@ -107,6 +111,136 @@ class Helper:
         if show:
             print(out)
         return out
+
+    @staticmethod
+    def _is_valid_path(s: str) -> bool:
+        """Reject emojis and other invalid characters."""
+        return all(ch in ALLOWED_PATH_CHARS for ch in s)
+
+    @staticmethod
+    def extract_paths(
+        line: str, p_root: Optional[str | Path] = None, is_path: bool = False, is_file: bool = False
+    ) -> dict:
+        """extract path references from a character line".
+        Optionally validates for path or file object
+        returns the original string and eventually the new one
+        """
+
+        p_root_ = Path(p_root) if p_root else Path(os.getcwd())
+
+        # Regex:
+        pattern = (
+            r'"([^"]+)"|'  # quoted paths
+            r'([A-Za-z]:[\\/][^\s")]+)|'  # Windows absolute
+            r"(/[A-Za-z0-9._\-/]+)|"  # Unix absolute (emoji-safe)
+            r'(\.\.?[\\/][^\s")]+)|'  # relative paths
+            r'(file:[\\/]+[^\s")]+)'  # file:// or file:\\
+        )
+        num_matches: int = 1
+        is_valid: bool = True
+        matches = {}
+
+        # Find all URL spans first
+        url_spans = []
+        for m in re.finditer(r"https?://[^\s)]+", line):
+            url_spans.append((m.start(), m.end()))
+
+        def inside_url(pos):
+            """Check if a position lies inside any URL span."""
+            return any(start <= pos < end for start, end in url_spans)
+
+        for match in re.findall(pattern, line):
+            # match is a tuple of 4 elements; only one is non-empty
+            raw = next(m for m in match if m)
+            adapted = raw
+
+            # --- Skip emojis or invalid characters ---
+            if not Helper._is_valid_path(adapted):
+                continue
+
+            # --- EXCLUDE URLs ---
+            if adapted.startswith("http://") or adapted.startswith("https://"):
+                continue
+
+            # Skip anything located inside a URL
+            pos = line.find(adapted)
+            if inside_url(pos):
+                continue
+
+            # Handle file:// or file:\\ prefix
+            if adapted.lower().startswith("file:"):
+                adapted = re.sub(r"^file:[\\/]+", "", adapted, flags=re.IGNORECASE)
+
+            # Trim parentheses
+            if adapted.startswith("(") and adapted.endswith(")"):
+                adapted = adapted[1:-1]
+
+            # Convert to Path
+            p = Path(adapted)
+
+            # Handle relative paths
+            if not p.is_absolute():
+                p = (p_root_ / p).resolve()
+
+            # validate if requested
+            if is_file or is_path:
+                is_valid = False
+            else:
+                is_valid = True
+
+            if is_file and p.is_file():
+                is_valid = True
+
+            if is_path and p.is_dir():
+                is_valid = True
+
+            if is_valid and p not in matches:
+                matches[num_matches] = {"raw": raw, "new": p}
+                print(matches[num_matches])
+
+                num_matches += 1
+
+        return matches
+
+    @staticmethod
+    def extract_hyperlinks(line: str) -> dict:
+        """extract urls from a line and returns it as string
+
+        Args:
+            line (str): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        # Matches:
+        # 1. "http...anything..."  → quoted URLs, including spaces
+        # 2. http...no-spaces      → unquoted URLs
+        pattern = r'"(https?://[^"]+)"|(https?://\S+)'
+        matches = re.findall(pattern, line)
+        num_matches: int = 1
+
+        urls = {}
+        for quoted, unquoted in matches:
+            url = quoted if quoted else unquoted
+            url_raw = url
+
+            # If the URL contains spaces or other unsafe characters,
+            # encode only the path/query part, not the scheme or domain.
+            if quoted:
+                # Encode everything after the scheme://
+                # Split into scheme:// and the rest
+                if "://" in url:
+                    scheme, rest = url.split("://", 1)
+                    encoded_rest = quote(rest, safe="/:?&=%")
+                    url = f"{scheme}://{encoded_rest}"
+                else:
+                    # Fallback: encode whole string
+                    url = quote(url)
+
+            urls[num_matches] = {"raw": url_raw, "new": url}
+            num_matches += 1
+
+        return urls
 
     @staticmethod
     def show_progress(num_passed: int, total: int, text: str = None) -> None:
@@ -201,6 +335,12 @@ class Helper:
         return f"{sign}{hours:02}:{minutes:02}:{offset_s:02}"
 
     @staticmethod
+    def weekday_abbrev(dt, language: str = "de") -> str:
+        """Returns the Weekday as abbreviation"""
+        abbrev = {"de": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"], "en": ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]}
+        return abbrev[language.lower()][dt.weekday()]
+
+    @staticmethod
     def get_datetime_from_format_string(
         dt_str: str, time_format: str, timezone_s: str = "Europe/Berlin", offset: int = 0
     ) -> DateTime:
@@ -250,7 +390,7 @@ class Helper:
         try:
             dt_naive = DateTime.strptime(dt_str_clean, time_format)
         except ValueError as e:
-            raise ValueError(f"Failed to parse datetime string: {e}")
+            raise ValueError(f"Failed to parse datetime string [{dt_str}] using format string [{time_format}]: {e}")
 
         # Attach default timezone
         dt_local = dt_naive.replace(tzinfo=ZoneInfo(timezone_s))
@@ -481,6 +621,36 @@ class CmdRunner:
 
 class Persistence:
     """persistence class"""
+
+    @staticmethod
+    def resolve_relative_path(root: str | Path, relative: str | Path, strict: bool = True) -> Optional[Path]:
+        """
+        Resolve a relative path against a given root directory
+        (OS-independent)
+        """
+
+        # relative is already absolute Path
+        if Path(relative).is_absolute():
+            return Path(relative)
+
+        try:
+            root_path = Path(root)
+
+            # Validate that root is a directory-like path
+            if not isinstance(root, (str, Path)):
+                raise TypeError(f"Root path [{root}] must be a string or Path object")
+
+            if not isinstance(relative, (str, Path)):
+                raise TypeError(f"Relative path [{relative}] must be a string or Path object")
+
+            # Join and resolve (non-strict: does not require the path to exist)
+            resolved = (root_path / relative).resolve(strict=strict)
+            return str(resolved)
+
+        except (OSError, RuntimeError, ValueError, TypeError, Exception) as e:
+            # Only happens if strict=True is used
+            logger.error(f"Error resolving file path: {e}")
+            return None
 
     @staticmethod
     def copy_recursive(p_from: str, p_to: str):
