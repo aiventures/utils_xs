@@ -192,6 +192,7 @@ def print_infoline(
     breadcrumb: Optional[str] = None,
     text_length: Optional[int] = None,
     show: bool = True,
+    indent: int | str = 180,
 ) -> str:
     """prints a colored information line in a standardized way."""
     out: str = ""
@@ -216,7 +217,7 @@ def print_infoline(
     if text_length and len(t_) < text_length:
         s_ = (text_length - len(t_)) * " "
         t_ = f"{t_}{s_}"
-    out = f"{i_}{l_}{d_}{t_} {b_}{c_}".strip()
+    out = f"{i_}{l_}{d_}{t_:<{indent}} {b_}{c_}".strip()
     if show:
         print(out)
     return out

@@ -283,6 +283,93 @@ class Helper:
             print()
 
     @staticmethod
+    def parse_rules(
+        s: str,
+        or_mark: str = "_",
+        and_mark: str = "&",
+        not_mark: str = "!",
+        not_or_marks: Optional[str] = None,
+        not_and_marks: Optional[str] = None,
+    ) -> dict:
+        """parses a string and splits parts with prefixes into logical categories"""
+        # Default combinations if none provided
+        if not_or_marks is None:
+            not_or_marks = [not_mark + or_mark, or_mark + not_mark]
+
+        if not_and_marks is None:
+            not_and_marks = [not_mark + and_mark, and_mark + not_mark]
+
+        # Build mapping
+        prefix_map = {
+            not_mark: "not",
+            or_mark: "or",
+            and_mark: "and",
+        }
+
+        for combo in not_or_marks:
+            prefix_map[combo] = "not_or"
+
+        for combo in not_and_marks:
+            prefix_map[combo] = "not_and"
+
+        # Sort prefixes by length (longest first) so regex matches combos first
+        sorted_prefixes = sorted(prefix_map.keys(), key=len, reverse=True)
+        prefix_regex = "|".join(re.escape(p) for p in sorted_prefixes)
+
+        # Characters that indicate a new prefix
+        split_chars = "".join({or_mark, and_mark, not_mark})
+        pattern = rf"({prefix_regex})?([^ {re.escape(split_chars)}]+)"
+
+        # Prepare result structure
+        result = {v: [] for v in set(prefix_map.values())}
+
+        for pref, value in re.findall(pattern, s):
+            value = value.strip()
+            if not value:
+                continue
+
+            # Default prefix = OR
+            if pref == "":
+                pref = or_mark
+
+            key = prefix_map[pref]
+            result[key].append(value)
+
+        return result
+
+    @staticmethod
+    def extract_dates(text: str) -> list[list[str, DateTime]]:
+        """extract dates from a string, returns original string and datetime in order of occurence"""
+
+        date_pattern = re.compile(
+            r"\b("
+            r"\d{8}"  # YYYYMMDD
+            r"|"
+            r"\d{4}-\d{2}-\d{2}"  # YYYY-MM-DD
+            r"|"
+            r"\d{1,2}\.\d{1,2}\.\d{4}"  # dd.mm.yyyy
+            r")\b"
+        )
+
+        results = []
+
+        for m in date_pattern.finditer(text):
+            s = m.group()
+            try:
+                if "." in s:
+                    dt = DateTime.strptime(s, "%d.%m.%Y")
+                elif "-" in s:
+                    dt = DateTime.strptime(s, "%Y-%m-%d")
+                else:
+                    dt = DateTime.strptime(s, "%Y%m%d")
+
+                results.append((s, dt))
+            except ValueError:
+                logger.debug(f"Invalid Dateformat [{s}] in string [{text}]")
+
+        return results
+
+    @staticmethod
     def format_timestamp(
         timestamp: Optional[int] = None, timezone_s: str = "Europe/Berlin", format_s: str = "%Y:%m:%d %H:%M:%S"
     ) -> str:
